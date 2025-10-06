@@ -1,77 +1,83 @@
-import os
-import sqlite3
-import random
-from datetime import datetime
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
+import os  # لقراءة المتغيرات البيئية مثل التوكن والأدمن ID
+import sqlite3  # لإدارة قاعدة البيانات SQLite
+import random  # لاختيار عبارة تحفيزية عشوائية
+import asyncio  # لتشغيل الـ async
+from datetime import datetime  # للتعامل مع التواريخ في قاعدة البيانات
+from aiogram import Bot, Dispatcher, types  # مكتبة aiogram الأساسية للبوت
+from aiogram.filters import Command  # لتصفية الأوامر مثل /start
+from aiogram.types import (
+    ReplyKeyboardMarkup, KeyboardButton,  # لوحة المفاتيح العادية
+    InlineKeyboardMarkup, InlineKeyboardButton  # لوحة المفاتيح الداخلية
+)
+from aiogram.fsm.context import FSMContext  # لإدارة حالات FSM
+from aiogram.fsm.state import State, StatesGroup  # لتعريف الحالات
+from aiogram.fsm.storage.memory import MemoryStorage  # تخزين الحالات في الذاكرة (يمكن تغييرها لـ Redis للإنتاج)
+from aiohttp import web  # إضافة للـ HTTP server في Web Service
 
 # إعداد البوت
-TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_ID = int(os.getenv('CHAT_ADMIN_ID'))
+TOKEN = os.getenv('BOT_TOKEN')  # قراءة التوكن من المتغيرات البيئية
+ADMIN_ID = int(os.getenv('CHAT_ADMIN_ID'))  # ID الدردشة للأدمن
 
-bot = Bot(token=TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
+bot = Bot(token=TOKEN)  # إنشاء كائن البوت
+storage = MemoryStorage()  # تخزين الحالات في الذاكرة (غير دائم، مناسب للتطوير)
+dp = Dispatcher(storage=storage)  # Dispatcher لإدارة الرسائل والكولباكات
 
 # قاعدة بيانات SQLite
-DB_PATH = 'bot_database.db'
+DB_PATH = '/app/bot_database.db'  # مسار ملف قاعدة البيانات للتخزين المستمر في Render
 
 def init_db():
+    """إنشاء قاعدة البيانات وجدول الطلبات إذا لم يكن موجوداً"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # جدول الطلبات العام
+    # جدول الطلبات العام لتخزين طلبات الاعتذار والإجازة
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            user_name TEXT,
-            request_type TEXT,  -- 'excuse' or 'leave'
-            reason TEXT,
-            details TEXT,  -- for leave: duration, start_date, end_date
-            status TEXT DEFAULT 'pending',  -- pending, approved, rejected
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            id INTEGER PRIMARY KEY AUTOINCREMENT,  -- رقم الطلب التلقائي
+            user_id INTEGER,  -- ID المستخدم في تلغرام
+            user_name TEXT,  -- اسم المتطوع
+            request_type TEXT,  -- 'excuse' أو 'leave'
+            reason TEXT,  -- سبب الطلب
+            details TEXT,  -- تفاصيل إضافية (للإجازة: المدة والتواريخ)
+            status TEXT DEFAULT 'pending',  -- الحالة: pending, approved, rejected
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- تاريخ الإنشاء
         )
     ''')
     
     conn.commit()
     conn.close()
 
-init_db()
+init_db()  # استدعاء الدالة لتهيئة قاعدة البيانات عند بدء التشغيل
 
-# حالات FSM للاعتذار
+# حالات FSM للاعتذار (لجمع البيانات خطوة بخطوة)
 class ExcuseStates(StatesGroup):
-    waiting_name = State()
-    waiting_reason = State()
-    waiting_confirm = State()
+    waiting_name = State()  # انتظار اسم المتطوع
+    waiting_reason = State()  # انتظار سبب الاعتذار
+    waiting_confirm = State()  # انتظار التأكيد
 
-# حالات FSM للإجازة
+# حالات FSM للإجازة (أكثر خطوات بسبب التفاصيل)
 class LeaveStates(StatesGroup):
-    waiting_name = State()
-    waiting_reason = State()
-    waiting_duration = State()
-    waiting_start_date = State()
-    waiting_end_date = State()
-    waiting_confirm = State()
+    waiting_name = State()  # انتظار اسم المتطوع
+    waiting_reason = State()  # انتظار سبب الإجازة
+    waiting_duration = State()  # انتظار مدة الإجازة
+    waiting_start_date = State()  # انتظار تاريخ البدء
+    waiting_end_date = State()  # انتظار تاريخ الانتهاء
+    waiting_confirm = State()  # انتظار التأكيد
 
 # حالات FSM لتتبع الطلبات
 class TrackStates(StatesGroup):
-    waiting_request_id = State()
+    waiting_request_id = State()  # انتظار رقم الطلب أو 'جميع'
 
-# لوحة المفاتيح الرئيسية
+# لوحة المفاتيح الرئيسية (تظهر للمستخدم عند /start)
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="اعتذار"), KeyboardButton(text="إجازة")],
-        [KeyboardButton(text="تتبع طلباتي"), KeyboardButton(text="مراجع الفريق"), KeyboardButton(text="أهدني عبارة")]
+        [KeyboardButton(text="اعتذار"), KeyboardButton(text="إجازة")],  # أزرار الطلبات الرئيسية
+        [KeyboardButton(text="تتبع طلباتي"), KeyboardButton(text="مراجع الفريق"), KeyboardButton(text="أهدني عبارة")]  # أزرار إضافية
     ],
-    resize_keyboard=True
+    resize_keyboard=True  # تكييف حجم اللوحة مع الشاشة
 )
 
-# عبارات تحفيزية
+# قائمة العبارات التحفيزية (يمكن إضافة المزيد هنا)
 motivational_phrases = [
     "العمل الخيري هو بذرة الأمل في قلوب الناس، ازرعها وستحصد الابتسامات!",
     "في كل يد تمتد للمساعدة، ينبت أمل جديد. استمر في إشراقك مع فريق أبناء الأرض!",
@@ -80,7 +86,7 @@ motivational_phrases = [
     "مع فريق أبناء الأرض، نبني جسور الأمل. أنت بطل هذه القصة!"
 ]
 
-# معالج الأمر /start
+# معالج الأمر /start - يرسل رسالة الترحيب ولوحة المفاتيح
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     await message.answer(
@@ -89,7 +95,7 @@ async def start_handler(message: types.Message):
         reply_markup=main_keyboard
     )
 
-# معالج زر الاعتذار
+# معالج زر الاعتذار - يبدأ عملية جمع بيانات الاعتذار
 @dp.message(lambda message: message.text == "اعتذار")
 async def excuse_start(message: types.Message, state: FSMContext):
     await message.answer("ما اسمك الكامل كمتطوع؟")
@@ -97,6 +103,7 @@ async def excuse_start(message: types.Message, state: FSMContext):
 
 @dp.message(ExcuseStates.waiting_name)
 async def excuse_name(message: types.Message, state: FSMContext):
+    # حفظ الاسم في حالة FSM
     await state.update_data(name=message.text)
     await message.answer("ما سبب الاعتذار عن المبادرة/الاجتماع/النشاط؟")
     await state.set_state(ExcuseStates.waiting_reason)
@@ -104,8 +111,9 @@ async def excuse_name(message: types.Message, state: FSMContext):
 @dp.message(ExcuseStates.waiting_reason)
 async def excuse_reason(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    data['reason'] = message.text
+    data['reason'] = message.text  # حفظ السبب
     
+    # إنشاء لوحة تأكيد داخلية
     confirm_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="تأكيد الطلب", callback_data="confirm_excuse")]
     ])
@@ -120,26 +128,27 @@ async def excuse_reason(message: types.Message, state: FSMContext):
     await state.update_data(reason=data['reason'])
     await state.set_state(ExcuseStates.waiting_confirm)
 
+# معالج الكولباك لتأكيد الاعتذار
 @dp.callback_query(lambda c: c.data == "confirm_excuse", ExcuseStates.waiting_confirm)
 async def confirm_excuse(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     
-    # حفظ في قاعدة البيانات
+    # حفظ الطلب في قاعدة البيانات
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO requests (user_id, user_name, request_type, reason) VALUES (?, ?, ?, ?)",
         (callback.from_user.id, data['name'], 'excuse', data['reason'])
     )
-    request_id = cursor.lastrowid
+    request_id = cursor.lastrowid  # الحصول على رقم الطلب الجديد
     conn.commit()
     conn.close()
     
-    # إخطار المستخدم
+    # إخطار المستخدم بنجاح الإرسال
     await callback.message.edit_text("تم إرسال طلبك بنجاح! سيتم معالجته قريباً (قبول أو رفض).")
     await callback.answer()
     
-    # إخطار الأدمن
+    # إنشاء لوحة للأدمن للقبول/الرفض
     admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="قبول", callback_data=f"approve_excuse_{request_id}"),
@@ -147,6 +156,7 @@ async def confirm_excuse(callback: types.CallbackQuery, state: FSMContext):
         ]
     ])
     
+    # إرسال الطلب إلى الأدمن
     await bot.send_message(
         ADMIN_ID,
         f"طلب اعتذار جديد #{request_id}\n"
@@ -156,9 +166,9 @@ async def confirm_excuse(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=admin_keyboard
     )
     
-    await state.clear()
+    await state.clear()  # مسح الحالة بعد الإكمال
 
-# معالج زر الإجازة
+# معالج زر الإجازة - يبدأ عملية جمع بيانات الإجازة
 @dp.message(lambda message: message.text == "إجازة")
 async def leave_start(message: types.Message, state: FSMContext):
     await message.answer("ما اسمك الكامل كمتطوع؟")
@@ -194,6 +204,7 @@ async def leave_end_date(message: types.Message, state: FSMContext):
     data['end_date'] = message.text
     details = f"مدة: {data['duration']} أيام\nتاريخ البدء: {data['start_date']}\nتاريخ الانتهاء: {data['end_date']}"
     
+    # إنشاء لوحة تأكيد
     confirm_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="تأكيد الطلب", callback_data="confirm_leave")]
     ])
@@ -209,12 +220,13 @@ async def leave_end_date(message: types.Message, state: FSMContext):
     await state.update_data(end_date=data['end_date'])
     await state.set_state(LeaveStates.waiting_confirm)
 
+# معالج الكولباك لتأكيد الإجازة
 @dp.callback_query(lambda c: c.data == "confirm_leave", LeaveStates.waiting_confirm)
 async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     details = f"مدة: {data['duration']} أيام\nتاريخ البدء: {data['start_date']}\nتاريخ الانتهاء: {data['end_date']}"
     
-    # حفظ في قاعدة البيانات
+    # حفظ الطلب في قاعدة البيانات مع التفاصيل
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
@@ -229,7 +241,7 @@ async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("تم إرسال طلبك بنجاح! سيتم معالجته قريباً (قبول أو رفض).")
     await callback.answer()
     
-    # إخطار الأدمن
+    # لوحة الأدمن
     admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="قبول", callback_data=f"approve_leave_{request_id}"),
@@ -237,6 +249,7 @@ async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
         ]
     ])
     
+    # إرسال إلى الأدمن
     await bot.send_message(
         ADMIN_ID,
         f"طلب إجازة جديد #{request_id}\n"
@@ -249,14 +262,15 @@ async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
     
     await state.clear()
 
-# معالج قرارات الأدمن
+# معالج قرارات الأدمن - للقبول
 @dp.callback_query(lambda c: c.data.startswith("approve_"))
 async def approve_request(callback: types.CallbackQuery):
+    # التحقق من أن المستخدم هو الأدمن فقط
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("غير مصرح لك!")
         return
     
-    parts = callback.data.split("_")
+    parts = callback.data.split("_")  # تحليل البيانات: approve_[type]_[id]
     request_type = parts[1]
     request_id = int(parts[2])
     
@@ -264,14 +278,17 @@ async def approve_request(callback: types.CallbackQuery):
     cursor = conn.cursor()
     cursor.execute("UPDATE requests SET status = 'approved' WHERE id = ?", (request_id,))
     cursor.execute("SELECT user_id FROM requests WHERE id = ?", (request_id,))
-    user_id = cursor.fetchone()[0]
+    user_id = cursor.fetchone()[0]  # الحصول على ID المستخدم
     conn.commit()
     conn.close()
     
+    # إخطار المستخدم بالقبول
     await bot.send_message(user_id, f"تم قبول طلبك #{request_id}!")
+    # تحديث الرسالة للأدمن
     await callback.message.edit_text(callback.message.text + "\n\nتم القبول.")
     await callback.answer()
 
+# معالج قرارات الأدمن - للرفض
 @dp.callback_query(lambda c: c.data.startswith("reject_"))
 async def reject_request(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -290,11 +307,13 @@ async def reject_request(callback: types.CallbackQuery):
     conn.commit()
     conn.close()
     
+    # إخطار المستخدم بالرفض
     await bot.send_message(user_id, f"تم رفض طلبك #{request_id}. يرجى التواصل مع الإدارة للمزيد من التفاصيل.")
+    # تحديث الرسالة للأدمن
     await callback.message.edit_text(callback.message.text + "\n\nتم الرفض.")
     await callback.answer()
 
-# معالج زر تتبع الطلبات
+# معالج زر تتبع الطلبات - يبدأ عملية التتبع
 @dp.message(lambda message: message.text == "تتبع طلباتي")
 async def track_start(message: types.Message, state: FSMContext):
     await message.answer("أدخل رقم الطلب لتتبعه (أو اكتب 'جميع' لعرض كل طلباتك):")
@@ -302,14 +321,14 @@ async def track_start(message: types.Message, state: FSMContext):
 
 @dp.message(TrackStates.waiting_request_id)
 async def track_request(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
+    user_id = message.from_user.id  # ID المستخدم الحالي
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    input_text = message.text.strip().lower()
+    input_text = message.text.strip().lower()  # تنظيف الإدخال
     
     if input_text == 'جميع':
-        # عرض جميع الطلبات
+        # استعلام لجلب جميع طلبات المستخدم
         cursor.execute(
             "SELECT id, request_type, reason, details, status, created_at FROM requests WHERE user_id = ? ORDER BY created_at DESC",
             (user_id,)
@@ -322,8 +341,8 @@ async def track_request(message: types.Message, state: FSMContext):
             response_text = "طلباتك السابقة:\n\n"
             for req in requests:
                 req_id, req_type, reason, details, status, created_at = req
-                type_ar = "اعتذار" if req_type == 'excuse' else "إجازة"
-                status_ar = "قيد الانتظار" if status == 'pending' else "مقبول" if status == 'approved' else "مرفوض"
+                type_ar = "اعتذار" if req_type == 'excuse' else "إجازة"  # ترجمة النوع
+                status_ar = "قيد الانتظار" if status == 'pending' else "مقبول" if status == 'approved' else "مرفوض"  # ترجمة الحالة
                 response_text += f"رقم الطلب: {req_id}\nنوع: {type_ar}\nالحالة: {status_ar}\nالتاريخ: {created_at}\nالسبب: {reason}\n"
                 if details:
                     response_text += f"التفاصيل: {details}\n"
@@ -332,7 +351,8 @@ async def track_request(message: types.Message, state: FSMContext):
             await message.answer(response_text)
     else:
         try:
-            request_id = int(input_text)
+            request_id = int(input_text)  # تحويل إلى رقم
+            # استعلام للطلب المحدد، مع التحقق من الملكية
             cursor.execute(
                 "SELECT request_type, reason, details, status, created_at FROM requests WHERE id = ? AND user_id = ?",
                 (request_id, user_id)
@@ -353,9 +373,9 @@ async def track_request(message: types.Message, state: FSMContext):
             await message.answer("يرجى إدخال رقم صحيح أو 'جميع'.")
     
     conn.close()
-    await state.clear()
+    await state.clear()  # مسح الحالة
 
-# معالج زر المراجع
+# معالج زر المراجع - يعرض خيارات المراجع الخاصة بالفريق
 @dp.message(lambda message: message.text == "مراجع الفريق")
 async def references_handler(message: types.Message):
     refs_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -368,6 +388,7 @@ async def references_handler(message: types.Message):
         reply_markup=refs_keyboard
     )
 
+# معالج كولباك مدونة السلوك
 @dp.callback_query(lambda c: c.data == "code_of_conduct")
 async def code_of_conduct(callback: types.CallbackQuery):
     text = (
@@ -381,6 +402,7 @@ async def code_of_conduct(callback: types.CallbackQuery):
     await callback.message.edit_text(text)
     await callback.answer()
 
+# معالج كولباك بنود وقوانين الفريق
 @dp.callback_query(lambda c: c.data == "rules")
 async def rules(callback: types.CallbackQuery):
     text = (
@@ -395,16 +417,34 @@ async def rules(callback: types.CallbackQuery):
     await callback.message.edit_text(text)
     await callback.answer()
 
-# معالج زر أهدني عبارة
+# معالج زر أهدني عبارة - يرسل عبارة تحفيزية عشوائية
 @dp.message(lambda message: message.text == "أهدني عبارة")
 async def phrase_handler(message: types.Message):
-    phrase = random.choice(motivational_phrases)
+    phrase = random.choice(motivational_phrases)  # اختيار عشوائي
     await message.answer(phrase)
 
-# تشغيل البوت
+# دالة التشغيل الرئيسية لـ Web Service مع webhook
 async def main():
-    await dp.start_polling(bot)
+    """بدء تشغيل البوت بـ webhook لـ Web Service"""
+    # إعداد webhook
+    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')}/webhook"
+    webhook_secret = os.getenv('WEBHOOK_SECRET', 'default_secret')
+
+    await bot.set_webhook(url=webhook_url, secret_token=webhook_secret)
+
+    # إعداد الـ app لـ aiohttp
+    app = web.Application()
+    app.router.add_post('/webhook', dp.feed_webhook_updates)  # يتلقى التحديثات من تلغرام
+
+    # تشغيل الـ server على المنفذ المطلوب في Render
+    port = int(os.getenv('PORT', 10000))  # Render يحدد PORT
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+
+    print(f"Webhook server started on port {port} at {webhook_url}")
+    await asyncio.Event().wait()  # يبقي الـ server يعمل مستمراً
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
