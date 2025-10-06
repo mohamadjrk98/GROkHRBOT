@@ -1,6 +1,7 @@
 import os  # لقراءة المتغيرات البيئية مثل التوكن والأدمن ID
 import random  # لاختيار عبارة تحفيزية عشوائية
 import asyncio  # لتشغيل الـ async
+import logging  # لتسجيل الأحداث
 from datetime import datetime  # للتعامل مع التواريخ
 from aiogram import Bot, Dispatcher, types  # مكتبة aiogram الأساسية للبوت
 from aiogram.filters import Command  # لتصفية الأوامر مثل /start
@@ -11,13 +12,19 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext  # لإدارة حالات FSM
 from aiogram.fsm.state import State, StatesGroup  # لتعريف الحالات
 from aiogram.fsm.storage.memory import MemoryStorage  # تخزين الحالات في الذاكرة (يمكن تغييرها لـ Redis للإنتاج)
-from aiohttp import web  # إضافة للـ HTTP server في Web Service
+from aiogram.client.default import DefaultBotProperties  # لإعدادات البوت الافتراضية
+from aiogram.enums import ParseMode  # لتحديد ParseMode
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application  # لإعداد webhook مع aiohttp
+from aiohttp import web  # للـ HTTP server
+
+# إعداد اللوغينغ
+logging.basicConfig(level=logging.INFO)
 
 # إعداد البوت
 TOKEN = os.getenv('BOT_TOKEN')  # قراءة التوكن من المتغيرات البيئية
 ADMIN_ID = int(os.getenv('CHAT_ADMIN_ID'))  # ID الدردشة للأدمن
 
-bot = Bot(token=TOKEN)  # إنشاء كائن البوت
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))  # إنشاء كائن البوت مع ParseMode
 storage = MemoryStorage()  # تخزين الحالات في الذاكرة (غير دائم، مناسب للتطوير)
 dp = Dispatcher(storage=storage)  # Dispatcher لإدارة الرسائل والكولباكات
 
@@ -313,28 +320,43 @@ async def phrase_handler(message: types.Message):
     phrase = random.choice(motivational_phrases)  # اختيار عشوائي
     await message.answer(phrase)
 
-# دالة التشغيل الرئيسية لـ Web Service مع webhook
-async def main():
-    """بدء تشغيل البوت بـ webhook لـ Web Service"""
-    # إعداد webhook
+# دالة التشغيل الرئيسية عند بدء البوت
+async def on_startup(bot: Bot) -> None:
+    """إعداد webhook عند بدء التشغيل"""
     webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')}/webhook"
     webhook_secret = os.getenv('WEBHOOK_SECRET', 'default_secret')
-
     await bot.set_webhook(url=webhook_url, secret_token=webhook_secret)
+    logging.info(f"Webhook set to {webhook_url}")
 
-    # إعداد الـ app لـ aiohttp
+# دالة التشغيل الرئيسية لـ Web Service مع webhook
+def main() -> None:
+    """بدء تشغيل البوت بـ webhook لـ Web Service"""
+    # تسجيل دالة الـ startup
+    dp.startup.register(on_startup)
+
+    # إعداد webhook secret
+    webhook_secret = os.getenv('WEBHOOK_SECRET', 'default_secret')
+    webhook_path = "/webhook"
+
+    # إنشاء aiohttp.web.Application instance
     app = web.Application()
-    app.router.add_post('/webhook', dp.feed_webhook_updates)  # يتلقى التحديثات من تلغرام
+
+    # إنشاء SimpleRequestHandler
+    webhook_requests_handler = SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+        secret_token=webhook_secret,
+    )
+    # تسجيل webhook handler
+    webhook_requests_handler.register(app, path=webhook_path)
+
+    # ربط startup و shutdown hooks مع aiohttp app
+    setup_application(app, dp, bot=bot)
 
     # تشغيل الـ server على المنفذ المطلوب في Render
     port = int(os.getenv('PORT', 10000))  # Render يحدد PORT
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-
-    print(f"Webhook server started on port {port} at {webhook_url}")
-    await asyncio.Event().wait()  # يبقي الـ server يعمل مستمراً
+    host = '0.0.0.0'  # للاستماع على جميع الواجهات
+    web.run_app(app, host=host, port=port)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
