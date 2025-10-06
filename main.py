@@ -31,6 +31,9 @@ dp = Dispatcher(storage=storage)  # Dispatcher لإدارة الرسائل وا�
 # عداد تسلسلي للطلبات (يبدأ من 1، يزيد مع كل طلب جديد - في الذاكرة، يعاد تعيينه عند إعادة التشغيل)
 request_counter = 1
 
+# قائمة المستخدمين (set لتجنب التكرار، في الذاكرة)
+users = set()
+
 # تخزين مواعيد الاجتماعات (قاموس في الذاكرة)
 meeting_schedules = {
     'الاجتماع العام': 'غير محدد',
@@ -63,6 +66,7 @@ class TrackStates(StatesGroup):
 class AdminStates(StatesGroup):
     waiting_meeting_type = State()  # انتظار نوع الاجتماع
     waiting_meeting_date = State()  # انتظار تاريخ الاجتماع
+    waiting_broadcast_message = State()  # انتظار رسالة البث
 
 # لوحة المفاتيح الرئيسية (تظهر للمستخدم عند /start) - مع إضافة الأزرار الجديدة
 main_keyboard = ReplyKeyboardMarkup(
@@ -115,6 +119,7 @@ async def back_to_main_inline(callback: types.CallbackQuery, state: FSMContext):
 # معالج الأمر /start - يرسل رسالة الترحيب ولوحة المفاتيح
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     await message.answer(
         "مرحباً بك في بوت إدارة شؤون الموارد البشرية لفريق أبناء الأرض! 🌟\n"
         "نحن سعيدون بوجودك معنا، وسنكون دائماً بجانبك في رحلتك التطوعية. 💖\n"
@@ -125,6 +130,7 @@ async def start_handler(message: types.Message):
 # معالج زر الاعتذار - يبدأ عملية جمع بيانات الاعتذار
 @dp.message(lambda message: message.text == "اعتذار")
 async def excuse_start(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="رجوع")]
@@ -137,6 +143,7 @@ async def excuse_start(message: types.Message, state: FSMContext):
 
 @dp.message(ExcuseStates.waiting_name)
 async def excuse_name(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     # حفظ الاسم في حالة FSM
     await state.update_data(name=message.text)
     # لوحة لاختيار نوع النشاط مع رجوع
@@ -153,6 +160,7 @@ async def excuse_name(message: types.Message, state: FSMContext):
 
 @dp.message(ExcuseStates.waiting_activity_type)
 async def excuse_activity_type(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     data = await state.get_data()
     activity_type = message.text
     if activity_type == "آخر":
@@ -185,6 +193,7 @@ async def excuse_activity_type(message: types.Message, state: FSMContext):
 
 @dp.message(ExcuseStates.waiting_reason)
 async def excuse_reason(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     data = await state.get_data()
     data['reason'] = message.text  # حفظ السبب
     
@@ -210,6 +219,7 @@ async def excuse_reason(message: types.Message, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "confirm_excuse", ExcuseStates.waiting_confirm)
 async def confirm_excuse(callback: types.CallbackQuery, state: FSMContext):
     global request_counter  # استخدام العداد العام
+    users.add(callback.from_user.id)  # إضافة المستخدم إلى القائمة
     data = await state.get_data()
     user_id = callback.from_user.id
     request_id = request_counter  # الحصول على الرقم التسلسلي
@@ -243,6 +253,7 @@ async def confirm_excuse(callback: types.CallbackQuery, state: FSMContext):
 # معالج زر الإجازة - يبدأ عملية جمع بيانات الإجازة
 @dp.message(lambda message: message.text == "إجازة")
 async def leave_start(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="رجوع")]
@@ -255,6 +266,7 @@ async def leave_start(message: types.Message, state: FSMContext):
 
 @dp.message(LeaveStates.waiting_name)
 async def leave_name(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     await state.update_data(name=message.text)
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[
@@ -268,6 +280,7 @@ async def leave_name(message: types.Message, state: FSMContext):
 
 @dp.message(LeaveStates.waiting_reason)
 async def leave_reason(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     await state.update_data(reason=message.text)
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[
@@ -281,6 +294,7 @@ async def leave_reason(message: types.Message, state: FSMContext):
 
 @dp.message(LeaveStates.waiting_duration)
 async def leave_duration(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     await state.update_data(duration=message.text)
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[
@@ -294,6 +308,7 @@ async def leave_duration(message: types.Message, state: FSMContext):
 
 @dp.message(LeaveStates.waiting_start_date)
 async def leave_start_date(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     await state.update_data(start_date=message.text)
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[
@@ -307,6 +322,7 @@ async def leave_start_date(message: types.Message, state: FSMContext):
 
 @dp.message(LeaveStates.waiting_end_date)
 async def leave_end_date(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     data = await state.get_data()
     data['end_date'] = message.text
     details = f"مدة: {data['duration']} أيام\nتاريخ البدء: {data['start_date']}\nتاريخ الانتهاء: {data['end_date']}"
@@ -333,6 +349,7 @@ async def leave_end_date(message: types.Message, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "confirm_leave", LeaveStates.waiting_confirm)
 async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
     global request_counter  # استخدام العداد العام
+    users.add(callback.from_user.id)  # إضافة المستخدم إلى القائمة
     data = await state.get_data()
     user_id = callback.from_user.id
     request_id = request_counter  # الحصول على الرقم التسلسلي
@@ -404,6 +421,7 @@ async def reject_request(callback: types.CallbackQuery):
 # معالج زر تتبع الطلبات - مؤقت بدون DB
 @dp.message(lambda message: message.text == "تتبع طلباتي")
 async def track_start(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="رجوع")]
@@ -416,6 +434,7 @@ async def track_start(message: types.Message, state: FSMContext):
 # معالج زر المراجع - يعرض خيارات المراجع الخاصة بالفريق
 @dp.message(lambda message: message.text == "مراجع الفريق")
 async def references_handler(message: types.Message):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     refs_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="مدونة السلوك", callback_data="code_of_conduct")],
         [InlineKeyboardButton(text="بنود وقوانين الفريق", callback_data="rules")],
@@ -430,6 +449,7 @@ async def references_handler(message: types.Message):
 # معالج كولباك مدونة السلوك
 @dp.callback_query(lambda c: c.data == "code_of_conduct")
 async def code_of_conduct(callback: types.CallbackQuery):
+    users.add(callback.from_user.id)  # إضافة المستخدم إلى القائمة
     text = (
         "مدونة السلوك لفريق أبناء الأرض:\n\n"
         "1. الاحترام المتبادل: احترم زملاءك وكل الأطراف.\n"
@@ -447,6 +467,7 @@ async def code_of_conduct(callback: types.CallbackQuery):
 # معالج كولباك بنود وقوانين الفريق
 @dp.callback_query(lambda c: c.data == "rules")
 async def rules(callback: types.CallbackQuery):
+    users.add(callback.from_user.id)  # إضافة المستخدم إلى القائمة
     text = (
         "بنود وقوانين فريق أبناء الأرض:\n\n"
         "1. الالتزام بالأهداف الخيرية.\n"
@@ -465,18 +486,21 @@ async def rules(callback: types.CallbackQuery):
 # معالج زر أهدني عبارة - يرسل عبارة تحفيزية عشوائية
 @dp.message(lambda message: message.text == "أهدني عبارة")
 async def phrase_handler(message: types.Message):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     phrase = random.choice(motivational_phrases)  # اختيار عشوائي
     await message.answer(f"إليك عبارة تحفيزية من القلب: {phrase} 💖", reply_markup=main_keyboard)
 
 # معالج زر لا تنس ذكر الله
 @dp.message(lambda message: message.text == "لا تنس ذكر الله")
 async def dhikr_handler(message: types.Message):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     dhikr = "\n".join(dhikr_phrases)
     await message.answer(f"اللهم اجعل هذا الذكر نوراً لقلبك: {dhikr} 🌟", reply_markup=main_keyboard)
 
 # معالج زر استعلامات
 @dp.message(lambda message: message.text == "استعلامات")
 async def inquiries_handler(message: types.Message):
+    users.add(message.from_user.id)  # إضافة المستخدم إلى القائمة
     inquiries_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="استعلام عن اجتماع", callback_data="inquire_meeting")],
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -485,6 +509,7 @@ async def inquiries_handler(message: types.Message):
 
 @dp.callback_query(lambda c: c.data == "inquire_meeting")
 async def inquire_meeting(callback: types.CallbackQuery):
+    users.add(callback.from_user.id)  # إضافة المستخدم إلى القائمة
     meeting_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="الاجتماع العام", callback_data="meeting_general")],
         [InlineKeyboardButton(text="اجتماع فريق الدعم الاول", callback_data="meeting_support1")],
@@ -498,6 +523,7 @@ async def inquire_meeting(callback: types.CallbackQuery):
 # معالجات الاستعلامات عن الاجتماعات (عرض المواعيد من القاموس)
 @dp.callback_query(lambda c: c.data == "meeting_general")
 async def meeting_general(callback: types.CallbackQuery):
+    users.add(callback.from_user.id)  # إضافة المستخدم إلى القائمة
     date = meeting_schedules.get('الاجتماع العام', 'غير محدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -507,6 +533,7 @@ async def meeting_general(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "meeting_support1")
 async def meeting_support1(callback: types.CallbackQuery):
+    users.add(callback.from_user.id)  # إضافة المستخدم إلى القائمة
     date = meeting_schedules.get('اجتماع فريق الدعم الاول', 'غير محدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -516,140 +543,7 @@ async def meeting_support1(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "meeting_support2")
 async def meeting_support2(callback: types.CallbackQuery):
+    users.add(callback.from_user.id)  # إضافة المستخدم إلى القائمة
     date = meeting_schedules.get('فريق الدعم الثاني', 'غير محدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
-    ])
-    await callback.message.edit_text(f"موعد فريق الدعم الثاني: {date}\n\nدعمكم يلهمنا دائماً! 😊", reply_markup=back_keyboard)
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "meeting_central")
-async def meeting_central(callback: types.CallbackQuery):
-    date = meeting_schedules.get('الفريق المركزي', 'غير محدد')
-    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
-    ])
-    await callback.message.edit_text(f"موعد الفريق المركزي: {date}\n\nمركزنا هو قلب الفريق! ❤️", reply_markup=back_keyboard)
-    await callback.answer()
-
-# معالج لوحة التحكم للأدمن (/admin)
-@dp.message(Command("admin"))
-async def admin_panel(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("غير مصرح لك!")
-        return
-    admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="وضع موعد الاجتماع العام", callback_data="admin_general")],
-        [InlineKeyboardButton(text="وضع موعد دعم أول", callback_data="admin_support1")],
-        [InlineKeyboardButton(text="وضع موعد دعم ثاني", callback_data="admin_support2")],
-        [InlineKeyboardButton(text="وضع موعد مركزي", callback_data="admin_central")]
-    ])
-    await message.answer("لوحة التحكم للأدمن: نحن فخورون بإدارتك الرائعة! 🌟", reply_markup=admin_keyboard)
-    await state.set_state(AdminStates.waiting_meeting_type)  # بدء حالة الأدمن
-
-# معالجات لوحة الأدمن لاختيار نوع الاجتماع (بدون فلتر state في callback)
-@dp.callback_query(lambda c: c.data == "admin_general")
-async def admin_general(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("غير مصرح لك!")
-        return
-    await state.update_data(meeting_type='الاجتماع العام')
-    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
-    ])
-    await callback.message.edit_text("أدخل موعد الاجتماع العام (YYYY-MM-DD HH:MM): شكراً لجهودك في تنظيمنا! 😊", reply_markup=back_keyboard)
-    await state.set_state(AdminStates.waiting_meeting_date)
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "admin_support1")
-async def admin_support1(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("غير مصرح لك!")
-        return
-    await state.update_data(meeting_type='اجتماع فريق الدعم الاول')
-    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
-    ])
-    await callback.message.edit_text("أدخل موعد اجتماع فريق الدعم الاول (YYYY-MM-DD HH:MM):", reply_markup=back_keyboard)
-    await state.set_state(AdminStates.waiting_meeting_date)
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "admin_support2")
-async def admin_support2(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("غير مصرح لك!")
-        return
-    await state.update_data(meeting_type='فريق الدعم الثاني')
-    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
-    ])
-    await callback.message.edit_text("أدخل موعد فريق الدعم الثاني (YYYY-MM-DD HH:MM):", reply_markup=back_keyboard)
-    await state.set_state(AdminStates.waiting_meeting_date)
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "admin_central")
-async def admin_central(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("غير مصرح لك!")
-        return
-    await state.update_data(meeting_type='الفريق المركزي')
-    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
-    ])
-    await callback.message.edit_text("أدخل موعد الفريق المركزي (YYYY-MM-DD HH:MM):", reply_markup=back_keyboard)
-    await state.set_state(AdminStates.waiting_meeting_date)
-    await callback.answer()
-
-@dp.message(AdminStates.waiting_meeting_date)
-async def admin_set_date(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("غير مصرح لك!")
-        await state.clear()
-        return
-    data = await state.get_data()
-    meeting_type = data['meeting_type']
-    meeting_date = message.text
-    meeting_schedules[meeting_type] = meeting_date  # حفظ في القاموس
-    await message.answer(f"تم حفظ موعد {meeting_type}: {meeting_date}\nشكراً لك، أنت تجعل فريقنا أقوى! 🌹", reply_markup=main_keyboard)
-    await state.clear()
-
-# دالة التشغيل الرئيسية عند بدء البوت
-async def on_startup(bot: Bot) -> None:
-    """إعداد webhook عند بدء التشغيل"""
-    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')}/webhook"
-    webhook_secret = os.getenv('WEBHOOK_SECRET', 'default_secret')
-    await bot.set_webhook(url=webhook_url, secret_token=webhook_secret)
-    logging.info(f"Webhook set to {webhook_url}")
-
-# دالة التشغيل الرئيسية لـ Web Service مع webhook
-def main() -> None:
-    """بدء تشغيل البوت بـ webhook لـ Web Service"""
-    # تسجيل دالة الـ startup
-    dp.startup.register(on_startup)
-
-    # إعداد webhook secret
-    webhook_secret = os.getenv('WEBHOOK_SECRET', 'default_secret')
-    webhook_path = "/webhook"
-
-    # إنشاء aiohttp.web.Application instance
-    app = web.Application()
-
-    # إنشاء SimpleRequestHandler
-    webhook_requests_handler = SimpleRequestHandler(
-        dispatcher=dp,
-        bot=bot,
-        secret_token=webhook_secret,
-    )
-    # تسجيل webhook handler
-    webhook_requests_handler.register(app, path=webhook_path)
-
-    # ربط startup و shutdown hooks مع aiohttp app
-    setup_application(app, dp, bot=bot)
-
-    # تشغيل الـ server على المنفذ المطلوب في Render
-    port = int(os.getenv('PORT', 10000))  # Render يحدد PORT
-    host = '0.0.0.0'  # للاستماع على جميع الواجهات
-    web.run_app(app, host=host, port=port)
-
-if __name__ == "__main__":
-    main()
+        [InlineKeyboardButton(text="رجوع",
