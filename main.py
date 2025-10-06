@@ -1,8 +1,7 @@
 import os  # لقراءة المتغيرات البيئية مثل التوكن والأدمن ID
-import sqlite3  # لإدارة قاعدة البيانات SQLite
 import random  # لاختيار عبارة تحفيزية عشوائية
 import asyncio  # لتشغيل الـ async
-from datetime import datetime  # للتعامل مع التواريخ في قاعدة البيانات
+from datetime import datetime  # للتعامل مع التواريخ
 from aiogram import Bot, Dispatcher, types  # مكتبة aiogram الأساسية للبوت
 from aiogram.filters import Command  # لتصفية الأوامر مثل /start
 from aiogram.types import (
@@ -22,32 +21,8 @@ bot = Bot(token=TOKEN)  # إنشاء كائن البوت
 storage = MemoryStorage()  # تخزين الحالات في الذاكرة (غير دائم، مناسب للتطوير)
 dp = Dispatcher(storage=storage)  # Dispatcher لإدارة الرسائل والكولباكات
 
-# قاعدة بيانات SQLite
-DB_PATH = '/app/bot_database.db'  # مسار ملف قاعدة البيانات للتخزين المستمر في Render
-
-def init_db():
-    """إنشاء قاعدة البيانات وجدول الطلبات إذا لم يكن موجوداً"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # جدول الطلبات العام لتخزين طلبات الاعتذار والإجازة
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,  -- رقم الطلب التلقائي
-            user_id INTEGER,  -- ID المستخدم في تلغرام
-            user_name TEXT,  -- اسم المتطوع
-            request_type TEXT,  -- 'excuse' أو 'leave'
-            reason TEXT,  -- سبب الطلب
-            details TEXT,  -- تفاصيل إضافية (للإجازة: المدة والتواريخ)
-            status TEXT DEFAULT 'pending',  -- الحالة: pending, approved, rejected
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- تاريخ الإنشاء
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-
-init_db()  # استدعاء الدالة لتهيئة قاعدة البيانات عند بدء التشغيل
+# عداد تسلسلي للطلبات (يبدأ من 1، يزيد مع كل طلب جديد - في الذاكرة، يعاد تعيينه عند إعادة التشغيل)
+request_counter = 1
 
 # حالات FSM للاعتذار (لجمع البيانات خطوة بخطوة)
 class ExcuseStates(StatesGroup):
@@ -64,7 +39,7 @@ class LeaveStates(StatesGroup):
     waiting_end_date = State()  # انتظار تاريخ الانتهاء
     waiting_confirm = State()  # انتظار التأكيد
 
-# حالات FSM لتتبع الطلبات
+# حالات FSM لتتبع الطلبات (مؤقتة، بدون DB)
 class TrackStates(StatesGroup):
     waiting_request_id = State()  # انتظار رقم الطلب أو 'جميع'
 
@@ -128,31 +103,24 @@ async def excuse_reason(message: types.Message, state: FSMContext):
     await state.update_data(reason=data['reason'])
     await state.set_state(ExcuseStates.waiting_confirm)
 
-# معالج الكولباك لتأكيد الاعتذار
+# معالج الكولباك لتأكيد الاعتذار (مع عداد تسلسلي)
 @dp.callback_query(lambda c: c.data == "confirm_excuse", ExcuseStates.waiting_confirm)
 async def confirm_excuse(callback: types.CallbackQuery, state: FSMContext):
+    global request_counter  # استخدام العداد العام
     data = await state.get_data()
-    
-    # حفظ الطلب في قاعدة البيانات
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO requests (user_id, user_name, request_type, reason) VALUES (?, ?, ?, ?)",
-        (callback.from_user.id, data['name'], 'excuse', data['reason'])
-    )
-    request_id = cursor.lastrowid  # الحصول على رقم الطلب الجديد
-    conn.commit()
-    conn.close()
+    user_id = callback.from_user.id
+    request_id = request_counter  # الحصول على الرقم التسلسلي
+    request_counter += 1  # زيادة العداد للطلب التالي
     
     # إخطار المستخدم بنجاح الإرسال
-    await callback.message.edit_text("تم إرسال طلبك بنجاح! سيتم معالجته قريباً (قبول أو رفض).")
+    await callback.message.edit_text(f"تم إرسال طلبك #{request_id} بنجاح! سيتم معالجته قريباً (قبول أو رفض).")
     await callback.answer()
     
-    # إنشاء لوحة للأدمن للقبول/الرفض
+    # إنشاء لوحة للأدمن للقبول/الرفض مع user_id في callback_data
     admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="قبول", callback_data=f"approve_excuse_{request_id}"),
-            InlineKeyboardButton(text="رفض", callback_data=f"reject_excuse_{request_id}")
+            InlineKeyboardButton(text="قبول", callback_data=f"approve_excuse_{request_id}_{user_id}"),
+            InlineKeyboardButton(text="رفض", callback_data=f"reject_excuse_{request_id}_{user_id}")
         ]
     ])
     
@@ -220,32 +188,25 @@ async def leave_end_date(message: types.Message, state: FSMContext):
     await state.update_data(end_date=data['end_date'])
     await state.set_state(LeaveStates.waiting_confirm)
 
-# معالج الكولباك لتأكيد الإجازة
+# معالج الكولباك لتأكيد الإجازة (مع عداد تسلسلي)
 @dp.callback_query(lambda c: c.data == "confirm_leave", LeaveStates.waiting_confirm)
 async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
+    global request_counter  # استخدام العداد العام
     data = await state.get_data()
+    user_id = callback.from_user.id
+    request_id = request_counter  # الحصول على الرقم التسلسلي
+    request_counter += 1  # زيادة العداد للطلب التالي
     details = f"مدة: {data['duration']} أيام\nتاريخ البدء: {data['start_date']}\nتاريخ الانتهاء: {data['end_date']}"
     
-    # حفظ الطلب في قاعدة البيانات مع التفاصيل
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO requests (user_id, user_name, request_type, reason, details) VALUES (?, ?, ?, ?, ?)",
-        (callback.from_user.id, data['name'], 'leave', data['reason'], details)
-    )
-    request_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    
     # إخطار المستخدم
-    await callback.message.edit_text("تم إرسال طلبك بنجاح! سيتم معالجته قريباً (قبول أو رفض).")
+    await callback.message.edit_text(f"تم إرسال طلبك #{request_id} بنجاح! سيتم معالجته قريباً (قبول أو رفض).")
     await callback.answer()
     
-    # لوحة الأدمن
+    # لوحة الأدمن مع user_id في callback_data
     admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="قبول", callback_data=f"approve_leave_{request_id}"),
-            InlineKeyboardButton(text="رفض", callback_data=f"reject_leave_{request_id}")
+            InlineKeyboardButton(text="قبول", callback_data=f"approve_leave_{request_id}_{user_id}"),
+            InlineKeyboardButton(text="رفض", callback_data=f"reject_leave_{request_id}_{user_id}")
         ]
     ])
     
@@ -262,7 +223,7 @@ async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
     
     await state.clear()
 
-# معالج قرارات الأدمن - للقبول
+# معالج قرارات الأدمن - للقبول (بدون DB، إرسال مباشر للمستخدم)
 @dp.callback_query(lambda c: c.data.startswith("approve_"))
 async def approve_request(callback: types.CallbackQuery):
     # التحقق من أن المستخدم هو الأدمن فقط
@@ -270,17 +231,10 @@ async def approve_request(callback: types.CallbackQuery):
         await callback.answer("غير مصرح لك!")
         return
     
-    parts = callback.data.split("_")  # تحليل البيانات: approve_[type]_[id]
+    parts = callback.data.split("_")  # تحليل البيانات: approve_[type]_[id]_[user_id]
     request_type = parts[1]
-    request_id = int(parts[2])
-    
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE requests SET status = 'approved' WHERE id = ?", (request_id,))
-    cursor.execute("SELECT user_id FROM requests WHERE id = ?", (request_id,))
-    user_id = cursor.fetchone()[0]  # الحصول على ID المستخدم
-    conn.commit()
-    conn.close()
+    request_id = parts[2]
+    user_id = int(parts[3])  # استخراج user_id من callback_data
     
     # إخطار المستخدم بالقبول
     await bot.send_message(user_id, f"تم قبول طلبك #{request_id}!")
@@ -288,24 +242,17 @@ async def approve_request(callback: types.CallbackQuery):
     await callback.message.edit_text(callback.message.text + "\n\nتم القبول.")
     await callback.answer()
 
-# معالج قرارات الأدمن - للرفض
+# معالج قرارات الأدمن - للرفض (بدون DB، إرسال مباشر للمستخدم)
 @dp.callback_query(lambda c: c.data.startswith("reject_"))
 async def reject_request(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("غير مصرح لك!")
         return
     
-    parts = callback.data.split("_")
+    parts = callback.data.split("_")  # تحليل البيانات: reject_[type]_[id]_[user_id]
     request_type = parts[1]
-    request_id = int(parts[2])
-    
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE requests SET status = 'rejected' WHERE id = ?", (request_id,))
-    cursor.execute("SELECT user_id FROM requests WHERE id = ?", (request_id,))
-    user_id = cursor.fetchone()[0]
-    conn.commit()
-    conn.close()
+    request_id = parts[2]
+    user_id = int(parts[3])  # استخراج user_id من callback_data
     
     # إخطار المستخدم بالرفض
     await bot.send_message(user_id, f"تم رفض طلبك #{request_id}. يرجى التواصل مع الإدارة للمزيد من التفاصيل.")
@@ -313,67 +260,10 @@ async def reject_request(callback: types.CallbackQuery):
     await callback.message.edit_text(callback.message.text + "\n\nتم الرفض.")
     await callback.answer()
 
-# معالج زر تتبع الطلبات - يبدأ عملية التتبع
+# معالج زر تتبع الطلبات - مؤقت بدون DB
 @dp.message(lambda message: message.text == "تتبع طلباتي")
 async def track_start(message: types.Message, state: FSMContext):
-    await message.answer("أدخل رقم الطلب لتتبعه (أو اكتب 'جميع' لعرض كل طلباتك):")
-    await state.set_state(TrackStates.waiting_request_id)
-
-@dp.message(TrackStates.waiting_request_id)
-async def track_request(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id  # ID المستخدم الحالي
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    input_text = message.text.strip().lower()  # تنظيف الإدخال
-    
-    if input_text == 'جميع':
-        # استعلام لجلب جميع طلبات المستخدم
-        cursor.execute(
-            "SELECT id, request_type, reason, details, status, created_at FROM requests WHERE user_id = ? ORDER BY created_at DESC",
-            (user_id,)
-        )
-        requests = cursor.fetchall()
-        
-        if not requests:
-            await message.answer("لا توجد طلبات سابقة لديك.")
-        else:
-            response_text = "طلباتك السابقة:\n\n"
-            for req in requests:
-                req_id, req_type, reason, details, status, created_at = req
-                type_ar = "اعتذار" if req_type == 'excuse' else "إجازة"  # ترجمة النوع
-                status_ar = "قيد الانتظار" if status == 'pending' else "مقبول" if status == 'approved' else "مرفوض"  # ترجمة الحالة
-                response_text += f"رقم الطلب: {req_id}\nنوع: {type_ar}\nالحالة: {status_ar}\nالتاريخ: {created_at}\nالسبب: {reason}\n"
-                if details:
-                    response_text += f"التفاصيل: {details}\n"
-                response_text += "---\n"
-            
-            await message.answer(response_text)
-    else:
-        try:
-            request_id = int(input_text)  # تحويل إلى رقم
-            # استعلام للطلب المحدد، مع التحقق من الملكية
-            cursor.execute(
-                "SELECT request_type, reason, details, status, created_at FROM requests WHERE id = ? AND user_id = ?",
-                (request_id, user_id)
-            )
-            req = cursor.fetchone()
-            
-            if not req:
-                await message.answer("لا يوجد طلب بهذا الرقم أو غير متاح لك.")
-            else:
-                req_type, reason, details, status, created_at = req
-                type_ar = "اعتذار" if req_type == 'excuse' else "إجازة"
-                status_ar = "قيد الانتظار" if status == 'pending' else "مقبول" if status == 'approved' else "مرفوض"
-                response_text = f"تفاصيل الطلب #{request_id}:\n\nنوع: {type_ar}\nالحالة: {status_ar}\nالتاريخ: {created_at}\nالسبب: {reason}\n"
-                if details:
-                    response_text += f"التفاصيل: {details}\n"
-                await message.answer(response_text)
-        except ValueError:
-            await message.answer("يرجى إدخال رقم صحيح أو 'جميع'.")
-    
-    conn.close()
-    await state.clear()  # مسح الحالة
+    await message.answer("ميزة التتبع غير متوفرة حالياً. يرجى التواصل مع الإدارة للاستعلام عن طلباتك.")
 
 # معالج زر المراجع - يعرض خيارات المراجع الخاصة بالفريق
 @dp.message(lambda message: message.text == "مراجع الفريق")
