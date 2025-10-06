@@ -94,7 +94,7 @@ dhikr_phrases = [
 async def back_to_main(message: types.Message, state: FSMContext):
     await state.clear()  # مسح أي حالة FSM حالية
     await message.answer(
-        "تم العودة إلى القائمة الرئيسية.",
+        "تم العودة إلى القائمة الرئيسية. نحن هنا لمساعدتك دائماً! 💕",
         reply_markup=main_keyboard
     )
 
@@ -103,7 +103,7 @@ async def back_to_main(message: types.Message, state: FSMContext):
 async def back_to_main_inline(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()  # مسح أي حالة FSM حالية
     await callback.message.edit_text(
-        "تم العودة إلى القائمة الرئيسية.",
+        "تم العودة إلى القائمة الرئيسية. نحن هنا لمساعدتك دائماً! 💕",
         reply_markup=None
     )
     await callback.message.answer(
@@ -116,7 +116,8 @@ async def back_to_main_inline(callback: types.CallbackQuery, state: FSMContext):
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     await message.answer(
-        "مرحباً بك في بوت إدارة شؤون الموارد البشرية لفريق أبناء الأرض!\n"
+        "مرحباً بك في بوت إدارة شؤون الموارد البشرية لفريق أبناء الأرض! 🌟\n"
+        "نحن سعيدون بوجودك معنا، وسنكون دائماً بجانبك في رحلتك التطوعية. 💖\n"
         "اختر الخيار الذي تريده:",
         reply_markup=main_keyboard
     )
@@ -131,7 +132,7 @@ async def excuse_start(message: types.Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=False
     )
-    await message.answer("ما اسمك الكامل كمتطوع؟", reply_markup=back_keyboard)
+    await message.answer("ما اسمك الكامل كمتطوع؟ نحن نقدر جهودك دائماً! 😊", reply_markup=back_keyboard)
     await state.set_state(ExcuseStates.waiting_name)
 
 @dp.message(ExcuseStates.waiting_name)
@@ -147,7 +148,7 @@ async def excuse_name(message: types.Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=True
     )
-    await message.answer("عن شو الاعتذار؟", reply_markup=activity_keyboard)
+    await message.answer(f"مرحباً {message.text}، سعيدون بك معنا! 🌹\nعن شو الاعتذار؟", reply_markup=activity_keyboard)
     await state.set_state(ExcuseStates.waiting_activity_type)
 
 @dp.message(ExcuseStates.waiting_activity_type)
@@ -163,7 +164,7 @@ async def excuse_activity_type(message: types.Message, state: FSMContext):
             resize_keyboard=True,
             one_time_keyboard=False
         )
-        await message.answer("يرجى توضيح العمل الذي تريد الاعتذار عنه:", reply_markup=back_keyboard)
+        await message.answer("نحن نفهم أن الحياة مليئة بالمفاجآت، يرجى توضيح العمل الذي تريد الاعتذار عنه: 💕", reply_markup=back_keyboard)
         await state.set_state(ExcuseStates.waiting_reason)
     else:
         await state.update_data(activity_type=activity_type)
@@ -173,6 +174,7 @@ async def excuse_activity_type(message: types.Message, state: FSMContext):
             [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
         ])
         await message.answer(
+            f"شكراً لثقتك بنا، {data['name']}! 😊\n"
             f"تأكيد الطلب:\n"
             f"الاسم: {data['name']}\n"
             f"نوع النشاط: {activity_type}\n\n"
@@ -193,6 +195,7 @@ async def excuse_reason(message: types.Message, state: FSMContext):
     ])
     
     await message.answer(
+        f"نحن نقدر صراحتك وشجاعتك في التعبير، {data['name']}! 💖\n"
         f"تأكيد الطلب:\n"
         f"الاسم: {data['name']}\n"
         f"نوع النشاط: آخر\n"
@@ -214,7 +217,7 @@ async def confirm_excuse(callback: types.CallbackQuery, state: FSMContext):
     activity_details = f"نوع النشاط: {data.get('activity_type', 'غير محدد')}\nالسبب: {data.get('reason', 'غير محدد')}"
     
     # إخطار المستخدم بنجاح الإرسال
-    await callback.message.edit_text(f"تم إرسال طلبك #{request_id} بنجاح! سيتم معالجته قريباً (قبول أو رفض).")
+    await callback.message.edit_text(f"شكراً لك يا {data['name']}، طلبك #{request_id} وصلنا بسلام! سنعالجه بكل حب قريباً. 💕")
     await callback.answer()
     
     # إنشاء لوحة للأدمن للقبول/الرفض مع user_id في callback_data
@@ -247,7 +250,7 @@ async def leave_start(message: types.Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=False
     )
-    await message.answer("ما اسمك الكامل كمتطوع؟", reply_markup=back_keyboard)
+    await message.answer("ما اسمك الكامل كمتطوع؟ نحن نقدر جهودك دائماً! 😊", reply_markup=back_keyboard)
     await state.set_state(LeaveStates.waiting_name)
 
 @dp.message(LeaveStates.waiting_name)
@@ -260,7 +263,7 @@ async def leave_name(message: types.Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=False
     )
-    await message.answer("ما سبب الإجازة؟", reply_markup=back_keyboard)
+    await message.answer(f"مرحباً {message.text}، سعيدون بك معنا! 🌹\nما سبب الإجازة؟", reply_markup=back_keyboard)
     await state.set_state(LeaveStates.waiting_reason)
 
 @dp.message(LeaveStates.waiting_reason)
@@ -273,7 +276,7 @@ async def leave_reason(message: types.Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=False
     )
-    await message.answer("ما مدة الإجازة (بالأيام)؟", reply_markup=back_keyboard)
+    await message.answer("ما مدة الإجازة (بالأيام)؟ نتمنى لك وقتاً جميلاً! 💕", reply_markup=back_keyboard)
     await state.set_state(LeaveStates.waiting_duration)
 
 @dp.message(LeaveStates.waiting_duration)
@@ -315,6 +318,7 @@ async def leave_end_date(message: types.Message, state: FSMContext):
     ])
     
     await message.answer(
+        f"شكراً لثقتك بنا، {data['name']}! 😊\n"
         f"تأكيد الطلب:\n"
         f"الاسم: {data['name']}\n"
         f"السبب: {data['reason']}\n"
@@ -336,7 +340,7 @@ async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
     details = f"مدة: {data['duration']} أيام\nتاريخ البدء: {data['start_date']}\nتاريخ الانتهاء: {data['end_date']}"
     
     # إخطار المستخدم
-    await callback.message.edit_text(f"تم إرسال طلبك #{request_id} بنجاح! سيتم معالجته قريباً (قبول أو رفض).")
+    await callback.message.edit_text(f"شكراً لك يا {data['name']}، طلبك #{request_id} وصلنا بسلام! سنعالجه بكل حب قريباً. 💕")
     await callback.answer()
     
     # لوحة الأدمن مع user_id في callback_data
@@ -374,7 +378,7 @@ async def approve_request(callback: types.CallbackQuery):
     user_id = int(parts[3])  # استخراج user_id من callback_data
     
     # إخطار المستخدم بالقبول
-    await bot.send_message(user_id, f"تم قبول طلبك #{request_id}!")
+    await bot.send_message(user_id, f"تهانينا! 🎉 تم قبول طلبك #{request_id} بكل فرحة. نحن فخورون بك! 💖")
     # تحديث الرسالة للأدمن
     await callback.message.edit_text(callback.message.text + "\n\nتم القبول.")
     await callback.answer()
@@ -392,7 +396,7 @@ async def reject_request(callback: types.CallbackQuery):
     user_id = int(parts[3])  # استخراج user_id من callback_data
     
     # إخطار المستخدم بالرفض
-    await bot.send_message(user_id, f"تم رفض طلبك #{request_id}. يرجى التواصل مع الإدارة للمزيد من التفاصيل.")
+    await bot.send_message(user_id, f"نأسف لإخبارك بذلك، 😔 تم رفض طلبك #{request_id}. يرجى التواصل مع الإدارة للمزيد من التفاصيل. نحن هنا لدعمك!")
     # تحديث الرسالة للأدمن
     await callback.message.edit_text(callback.message.text + "\n\nتم الرفض.")
     await callback.answer()
@@ -407,7 +411,7 @@ async def track_start(message: types.Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=False
     )
-    await message.answer("ميزة التتبع غير متوفرة حالياً. يرجى التواصل مع الإدارة للاستعلام عن طلباتك.", reply_markup=back_keyboard)
+    await message.answer("ميزة التتبع غير متوفرة حالياً. يرجى التواصل مع الإدارة للاستعلام عن طلباتك. نحن نسعد بمساعدتك! 💕", reply_markup=back_keyboard)
 
 # معالج زر المراجع - يعرض خيارات المراجع الخاصة بالفريق
 @dp.message(lambda message: message.text == "مراجع الفريق")
@@ -419,7 +423,7 @@ async def references_handler(message: types.Message):
     ])
     
     await message.answer(
-        "اختر المرجع المطلوب:",
+        "نحن فخورون بقيمنا في فريق أبناء الأرض! 🌟\nاختر المرجع المطلوب:",
         reply_markup=refs_keyboard
     )
 
@@ -432,7 +436,7 @@ async def code_of_conduct(callback: types.CallbackQuery):
         "2. الالتزام بالمواعيد: كن دقيقاً في الاجتماعات والأنشطة.\n"
         "3. السرية: احفظ معلومات الفريق سراً.\n"
         "4. الإيجابية: شجع الآخرين وكن مصدر إلهام.\n\n"
-        "للمزيد، تواصل مع الإدارة."
+        "للمزيد، تواصل مع الإدارة. نحن معاً في هذه الرحلة! 💖"
     )
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -450,7 +454,7 @@ async def rules(callback: types.CallbackQuery):
         "3. المشاركة الفعالة في الأنشطة.\n"
         "4. الإبلاغ عن أي مشكلات فوراً.\n"
         "5. عقوبات: تحذير، إيقاف، إنهاء العضوية حسب الخطأ.\n\n"
-        "للنسخة الكاملة، اطلب من الإدارة."
+        "للنسخة الكاملة، اطلب من الإدارة. نحن نبني عائلة قوية معاً! 🌹"
     )
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -462,13 +466,13 @@ async def rules(callback: types.CallbackQuery):
 @dp.message(lambda message: message.text == "أهدني عبارة")
 async def phrase_handler(message: types.Message):
     phrase = random.choice(motivational_phrases)  # اختيار عشوائي
-    await message.answer(phrase, reply_markup=main_keyboard)
+    await message.answer(f"إليك عبارة تحفيزية من القلب: {phrase} 💖", reply_markup=main_keyboard)
 
 # معالج زر لا تنس ذكر الله
 @dp.message(lambda message: message.text == "لا تنس ذكر الله")
 async def dhikr_handler(message: types.Message):
     dhikr = "\n".join(dhikr_phrases)
-    await message.answer(dhikr, reply_markup=main_keyboard)
+    await message.answer(f"اللهم اجعل هذا الذكر نوراً لقلبك: {dhikr} 🌟", reply_markup=main_keyboard)
 
 # معالج زر استعلامات
 @dp.message(lambda message: message.text == "استعلامات")
@@ -477,7 +481,7 @@ async def inquiries_handler(message: types.Message):
         [InlineKeyboardButton(text="استعلام عن اجتماع", callback_data="inquire_meeting")],
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
-    await message.answer("اختر نوع الاستعلام:", reply_markup=inquiries_keyboard)
+    await message.answer("نحن هنا لنجيب على استفساراتك بكل حب! 💕\nاختر نوع الاستعلام:", reply_markup=inquiries_keyboard)
 
 @dp.callback_query(lambda c: c.data == "inquire_meeting")
 async def inquire_meeting(callback: types.CallbackQuery):
@@ -488,7 +492,7 @@ async def inquire_meeting(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="الفريق المركزي", callback_data="meeting_central")],
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
-    await callback.message.edit_text("اختر الاجتماع:", reply_markup=meeting_keyboard)
+    await callback.message.edit_text("اختر الاجتماع الذي تهتم به: 😊", reply_markup=meeting_keyboard)
     await callback.answer()
 
 # معالجات الاستعلامات عن الاجتماعات (عرض المواعيد من القاموس)
@@ -498,7 +502,7 @@ async def meeting_general(callback: types.CallbackQuery):
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
-    await callback.message.edit_text(f"موعد الاجتماع العام: {date}", reply_markup=back_keyboard)
+    await callback.message.edit_text(f"موعد الاجتماع العام: {date}\n\nنحن نتطلع للقائك هناك! 🌹", reply_markup=back_keyboard)
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "meeting_support1")
@@ -507,7 +511,7 @@ async def meeting_support1(callback: types.CallbackQuery):
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
-    await callback.message.edit_text(f"موعد اجتماع فريق الدعم الاول: {date}", reply_markup=back_keyboard)
+    await callback.message.edit_text(f"موعد اجتماع فريق الدعم الاول: {date}\n\nمعاً نبني الدعم الأقوى! 💪", reply_markup=back_keyboard)
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "meeting_support2")
@@ -516,7 +520,7 @@ async def meeting_support2(callback: types.CallbackQuery):
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
-    await callback.message.edit_text(f"موعد فريق الدعم الثاني: {date}", reply_markup=back_keyboard)
+    await callback.message.edit_text(f"موعد فريق الدعم الثاني: {date}\n\nدعمكم يلهمنا دائماً! 😊", reply_markup=back_keyboard)
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "meeting_central")
@@ -525,7 +529,7 @@ async def meeting_central(callback: types.CallbackQuery):
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
-    await callback.message.edit_text(f"موعد الفريق المركزي: {date}", reply_markup=back_keyboard)
+    await callback.message.edit_text(f"موعد الفريق المركزي: {date}\n\nمركزنا هو قلب الفريق! ❤️", reply_markup=back_keyboard)
     await callback.answer()
 
 # معالج لوحة التحكم للأدمن (/admin)
@@ -540,7 +544,7 @@ async def admin_panel(message: types.Message, state: FSMContext):
         [InlineKeyboardButton(text="وضع موعد دعم ثاني", callback_data="admin_support2")],
         [InlineKeyboardButton(text="وضع موعد مركزي", callback_data="admin_central")]
     ])
-    await message.answer("لوحة التحكم للأدمن:", reply_markup=admin_keyboard)
+    await message.answer("لوحة التحكم للأدمن: نحن فخورون بإدارتك الرائعة! 🌟", reply_markup=admin_keyboard)
     await state.set_state(AdminStates.waiting_meeting_type)  # بدء حالة الأدمن
 
 # معالجات لوحة الأدمن لاختيار نوع الاجتماع (بدون فلتر state في callback)
@@ -553,7 +557,7 @@ async def admin_general(callback: types.CallbackQuery, state: FSMContext):
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
-    await callback.message.edit_text("أدخل موعد الاجتماع العام (YYYY-MM-DD HH:MM):", reply_markup=back_keyboard)
+    await callback.message.edit_text("أدخل موعد الاجتماع العام (YYYY-MM-DD HH:MM): شكراً لجهودك في تنظيمنا! 😊", reply_markup=back_keyboard)
     await state.set_state(AdminStates.waiting_meeting_date)
     await callback.answer()
 
@@ -606,7 +610,7 @@ async def admin_set_date(message: types.Message, state: FSMContext):
     meeting_type = data['meeting_type']
     meeting_date = message.text
     meeting_schedules[meeting_type] = meeting_date  # حفظ في القاموس
-    await message.answer(f"تم حفظ موعد {meeting_type}: {meeting_date}", reply_markup=main_keyboard)
+    await message.answer(f"تم حفظ موعد {meeting_type}: {meeting_date}\nشكراً لك، أنت تجعل فريقنا أقوى! 🌹", reply_markup=main_keyboard)
     await state.clear()
 
 # دالة التشغيل الرئيسية عند بدء البوت
