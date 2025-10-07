@@ -406,7 +406,7 @@ async def rules(callback: types.CallbackQuery):
 @dp.message(lambda message: message.text == "أهدني عبارة")
 async def phrase_handler(message: types.Message):
     phrase = random.choice(motivational_phrases)
-    await message.answer(f"إليك عبارة تحفيزية من القلب: {phrase} 💖", reply_markup=main_keyboard)
+    await message.answer(f": {phrase} 💖", reply_markup=main_keyboard)
 
 @dp.message(lambda message: message.text == "لا تنس ذكر الله")
 async def dhikr_handler(message: types.Message):
