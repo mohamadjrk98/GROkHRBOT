@@ -96,8 +96,8 @@ async def back_to_main_inline(callback: types.CallbackQuery, state: FSMContext):
 async def start_handler(message: types.Message):
     users.add(message.from_user.id)
     await message.answer(
-        "مرحباً بك في بوت إدارة شؤون الموارد البشرية لفريق أبناء الأرض! 🌟\n"
-        "نحن سعيدون بوجودك معنا، وسنكون دائماً بجانبك في رحلتك التطوعية. 💖\n"
+        "مرحباً بك في بوت شؤون الموارد البشرية لفريق أبناء الأرض! 🌟\n"
+        "نحن مبسوطين بوجودك معنا، و رح نكون دائماً جنبك  برحلتك التطوعية. 💖\n"
         "اختر الخيار الذي تريده:",
         reply_markup=main_keyboard
     )
@@ -110,7 +110,7 @@ async def excuse_start(message: types.Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=False
     )
-    await message.answer("ما اسمك الكامل كمتطوع؟ نحن نقدر جهودك دائماً! 😊", reply_markup=back_keyboard)
+    await message.answer("ما اسمك الكامل؟ نحن نقدر جهودك دائماً! 😊", reply_markup=back_keyboard)
     await state.set_state(ExcuseStates.waiting_name)
 
 @dp.message(ExcuseStates.waiting_name)
@@ -226,7 +226,7 @@ async def leave_name(message: types.Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=False
     )
-    await message.answer(f"مرحباً {message.text}، سعيدون بك معنا! 🌹\nما سبب الإجازة؟", reply_markup=back_keyboard)
+    await message.answer(f"اهلييين {message.text}، سعيدون بك معنا! 🌹\nما سبب الإجازة؟", reply_markup=back_keyboard)
     await state.set_state(LeaveStates.waiting_reason)
 
 @dp.message(LeaveStates.waiting_reason)
@@ -324,14 +324,14 @@ async def approve_request(callback: types.CallbackQuery):
     request_type = parts[1]
     request_id = parts[2]
     user_id = int(parts[3])
-    await bot.send_message(user_id, f"تهانينا! 🎉 تم قبول طلبك #{request_id} بكل فرحة. نحن فخورون بك! 💖")
+    await bot.send_message(user_id, f" ابشر! 🎉 تم قبول طلبك #{request_id} بكل فرحة. نحن فخورون بك! 💖")
     await callback.message.edit_text(callback.message.text + "\n\nتم القبول.")
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data.startswith("reject_"))
 async def reject_request(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
-        await callback.answer("غير مصرح لك!")
+        await callback.answer("مين قلك أنك آدمن ؟!")
         return
     parts = callback.data.split("_")
     request_type = parts[1]
@@ -348,7 +348,7 @@ async def track_start(message: types.Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=False
     )
-    await message.answer("ميزة التتبع غير متوفرة حالياً. تواصل مع الإدارة. 💕", reply_markup=back_keyboard)
+    await message.answer(" ميزة التتبع لسا ما جهزت . حكي محمد الجرك مطور البوت و المسؤول اللطيف. 💕", reply_markup=back_keyboard)
 
 @dp.message(lambda message: message.text == "مراجع الفريق")
 async def references_handler(message: types.Message):
@@ -397,7 +397,7 @@ async def phrase_handler(message: types.Message):
     phrase = random.choice(motivational_phrases)
     await message.answer(f"إليك عبارة تحفيزية من القلب: {phrase} 💖", reply_markup=main_keyboard)
 
-@dp.message(lambda message: message.text == "لا تنس ذكر الله")
+@dp.message(lambda message: message.text == "🤍لا تنسَ ذكر الله")
 async def dhikr_handler(message: types.Message):
     dhikr = "\n".join(dhikr_phrases)
     await message.answer(f"اللهم اجعل هذا الذكر نوراً لقلبك: {dhikr} 🌟", reply_markup=main_keyboard)
@@ -415,8 +415,8 @@ async def inquire_meeting(callback: types.CallbackQuery):
     meeting_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="الاجتماع العام", callback_data="meeting_general")],
         [InlineKeyboardButton(text="اجتماع فريق الدعم الاول", callback_data="meeting_support1")],
-        [InlineKeyboardButton(text="فريق الدعم الثاني", callback_data="meeting_support2")],
-        [InlineKeyboardButton(text="الفريق المركزي", callback_data="meeting_central")],
+        [InlineKeyboardButton(text="اجتماع فريق الدعم الثاني", callback_data="meeting_support2")],
+        [InlineKeyboardButton(text="اجتماع الفريق المركزي", callback_data="meeting_central")],
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
     await callback.message.edit_text("اختر الاجتماع الذي تهتم به: 😊", reply_markup=meeting_keyboard)
@@ -424,7 +424,7 @@ async def inquire_meeting(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "meeting_general")
 async def meeting_general(callback: types.CallbackQuery):
-    date = meeting_schedules.get('الاجتماع العام', 'غير محدد')
+    date = meeting_schedules.get('الاجتماع العام', 'لسا ما تحدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
@@ -433,7 +433,7 @@ async def meeting_general(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "meeting_support1")
 async def meeting_support1(callback: types.CallbackQuery):
-    date = meeting_schedules.get('اجتماع فريق الدعم الاول', 'غير محدد')
+    date = meeting_schedules.get('اجتماع فريق الدعم الاول', 'لسا ما تحدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
@@ -442,7 +442,7 @@ async def meeting_support1(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "meeting_support2")
 async def meeting_support2(callback: types.CallbackQuery):
-    date = meeting_schedules.get('فريق الدعم الثاني', 'غير محدد')
+    date = meeting_schedules.get('فريق الدعم الثاني', 'لسا ما تحدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
@@ -451,7 +451,7 @@ async def meeting_support2(callback: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "meeting_central")
 async def meeting_central(callback: types.CallbackQuery):
-    date = meeting_schedules.get('الفريق المركزي', 'غير محدد')
+    date = meeting_schedules.get('الفريق المركزي', 'لسا ما تحدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
@@ -461,7 +461,7 @@ async def meeting_central(callback: types.CallbackQuery):
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
-        await message.answer("غير مصرح لك!")
+        await message.answer("مين قلك أنك آدمن ؟!")
         return
     admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="وضع موعد الاجتماع العام", callback_data="admin_general")],
@@ -476,7 +476,7 @@ async def admin_panel(message: types.Message, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "admin_general")
 async def admin_general(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
-        await callback.answer("غير مصرح لك!")
+        await callback.answer("رو من هان مانك آدمن ")
         return
     await state.update_data(meeting_type='الاجتماع العام')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -489,7 +489,7 @@ async def admin_general(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "admin_support1")
 async def admin_support1(callback: types.CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
-        await callback.answer("غير مصرح لك!")
+        await callback.answer("كاشفك ، مانك آدمن 😝")
         return
     await state.update_data(meeting_type='اجتماع فريق الدعم الاول')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -551,7 +551,7 @@ async def admin_broadcast_start(callback: types.CallbackQuery, state: FSMContext
 @dp.message(AdminStates.waiting_broadcast_message)
 async def admin_broadcast_message(message: types.Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
-        await message.answer("غير مصرح لك!")
+        await message.answer("قعود عاقل و حاج تبعت")
         await state.clear()
         return
     broadcast_msg = message.text
