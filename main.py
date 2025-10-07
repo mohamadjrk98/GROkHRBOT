@@ -58,12 +58,15 @@ class AdminStates(StatesGroup):
     waiting_meeting_date = State()
     waiting_broadcast_message = State()
 
+class FeedbackStates(StatesGroup):
+    waiting_feedback = State()
+
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="اعتذار"), KeyboardButton(text="إجازة")],
         [KeyboardButton(text="تتبع طلباتي"), KeyboardButton(text="مراجع الفريق")],
         [KeyboardButton(text="أهدني عبارة"), KeyboardButton(text="لا تنس ذكر الله")],
-        [KeyboardButton(text="استعلامات")]
+        [KeyboardButton(text="استعلامات"), KeyboardButton(text="اقتراحات")]
     ],
     resize_keyboard=True
 )
@@ -112,6 +115,32 @@ async def start_handler(message: types.Message):
         "اختر الخيار الذي تريده:",
         reply_markup=main_keyboard
     )
+
+@dp.message(lambda message: message.text == "اقتراحات")
+async def feedback_start(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)
+    back_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="رجوع")]],
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+    await message.answer("شكراً لاهتمامك بتحسين البوت! يرجى إرسال اقتراحك أو تعليقك: 💕", reply_markup=back_keyboard)
+    await state.set_state(FeedbackStates.waiting_feedback)
+
+@dp.message(FeedbackStates.waiting_feedback)
+async def feedback_message(message: types.Message, state: FSMContext):
+    users.add(message.from_user.id)
+    user_name = message.from_user.first_name or "غير محدد"
+    feedback_text = message.text
+    await bot.send_message(
+        ADMIN_ID,
+        f"اقتراح جديد للبوت:\n"
+        f"المرسل: {user_name} (ID: {message.from_user.id})\n"
+        f"الاقتراح: {feedback_text}\n\n"
+        f"تاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+    await message.answer("شكراً جزيلاً لاقتراحك! سنراجعه بعناية لتحسين تجربتك معنا. 🌟", reply_markup=main_keyboard)
+    await state.clear()
 
 @dp.message(lambda message: message.text == "اعتذار")
 async def excuse_start(message: types.Message, state: FSMContext):
