@@ -397,7 +397,7 @@ async def phrase_handler(message: types.Message):
     phrase = random.choice(motivational_phrases)
     await message.answer(f"إليك عبارة تحفيزية من القلب: {phrase} 💖", reply_markup=main_keyboard)
 
-@dp.message(lambda message: message.text == "🤍لا تنسَ ذكر الله")
+@dp.message(lambda message: message.text == "لا تنس ذكر الله")
 async def dhikr_handler(message: types.Message):
     dhikr = "\n".join(dhikr_phrases)
     await message.answer(f"اللهم اجعل هذا الذكر نوراً لقلبك: {dhikr} 🌟", reply_markup=main_keyboard)
