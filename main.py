@@ -22,6 +22,8 @@ logging.basicConfig(level=logging.INFO)
 TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('CHAT_ADMIN_ID'))
 EXCUSE_GROUP_ID = -4737111167  # Chat ID for the excuses group
+LEAVE_GROUP_ID = -4868672688  # Chat ID for the leave group
+ATTENDANCE_GROUP_ID = -4966592161  # Chat ID for the attendance group
 
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
@@ -61,6 +63,10 @@ class AdminStates(StatesGroup):
     waiting_meeting_date = State()
     waiting_broadcast_message = State()
     waiting_upload_photo = State()
+    waiting_user_id = State()
+    waiting_user_message = State()
+    waiting_attendance_type = State()
+    waiting_attendance_names = State()
 
 class FeedbackStates(StatesGroup):
     waiting_feedback = State()
@@ -178,30 +184,18 @@ async def excuse_activity_type(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     data = await state.get_data()
     activity_type = message.text
-    if activity_type == "آخر":
-        await state.update_data(activity_type="آخر")
-        back_keyboard = ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="رجوع")]],
-            resize_keyboard=True,
-            one_time_keyboard=False
-        )
-        await message.answer("نحن نفهم أن الحياة مليئة بالمفاجآت، يرجى توضيح العمل الذي تريد الاعتذار عنه: 💕", reply_markup=back_keyboard)
-        await state.set_state(ExcuseStates.waiting_reason)
-    else:
-        await state.update_data(activity_type=activity_type)
-        confirm_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="تأكيد الطلب", callback_data="confirm_excuse")],
-            [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
-        ])
-        await message.answer(
-            f"شكراً لثقتك بنا، {data['name']}! 😊\n"
-            f"تأكيد الطلب:\n"
-            f"الاسم: {data['name']}\n"
-            f"نوع النشاط: {activity_type}\n\n"
-            "هل تريد تأكيد الطلب؟",
-            reply_markup=confirm_keyboard
-        )
-        await state.set_state(ExcuseStates.waiting_confirm)
+    if activity_type == "رجوع":
+        await state.clear()
+        await message.answer("تم العودة إلى القائمة الرئيسية. نحن هنا لمساعدتك دائماً! 💕", reply_markup=main_keyboard)
+        return
+    await state.update_data(activity_type=activity_type)
+    back_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="رجوع")]],
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+    await message.answer(f"شكراً لك، {data['name']}! 😊\nما هو السبب في الاعتذار عن {activity_type}؟", reply_markup=back_keyboard)
+    await state.set_state(ExcuseStates.waiting_reason)
 
 @dp.message(ExcuseStates.waiting_reason)
 async def excuse_reason(message: types.Message, state: FSMContext):
@@ -216,7 +210,7 @@ async def excuse_reason(message: types.Message, state: FSMContext):
         f"نحن نقدر صراحتك وشجاعتك في التعبير، {data['name']}! 💖\n"
         f"تأكيد الطلب:\n"
         f"الاسم: {data['name']}\n"
-        f"نوع النشاط: آخر\n"
+        f"نوع النشاط: {data['activity_type']}\n"
         f"السبب: {data['reason']}\n\n"
         "هل تريد تأكيد الطلب؟",
         reply_markup=confirm_keyboard
@@ -350,7 +344,7 @@ async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
         ]
     ])
     await bot.send_message(
-        ADMIN_ID,
+        LEAVE_GROUP_ID,
         f"طلب إجازة جديد #{request_id}\n"
         f"مقدم الطلب: {data['name']}\n"
         f"رقم الطلب: {request_id}\n"
@@ -531,10 +525,11 @@ async def admin_panel(message: types.Message, state: FSMContext):
         [InlineKeyboardButton(text="وضع موعد مركزي", callback_data="admin_central")],
         [InlineKeyboardButton(text="إرسال بث للجميع", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="رفع صور الفريق", callback_data="admin_upload_photos")],
-        [InlineKeyboardButton(text="حذف صور الفريق", callback_data="admin_delete_photos")]
+        [InlineKeyboardButton(text="حذف صور الفريق", callback_data="admin_delete_photos")],
+        [InlineKeyboardButton(text="إرسال رسالة لمستخدم", callback_data="admin_send_user_msg")],
+        [InlineKeyboardButton(text="تفقد", callback_data="admin_attendance")]
     ])
     await message.answer("لوحة التحكم للأدمن: نحن فخورون بإدارتك الرائعة! 🌟", reply_markup=admin_keyboard)
-    await state.set_state(AdminStates.waiting_meeting_type)
 
 @dp.callback_query(lambda c: c.data == "admin_general")
 async def admin_general(callback: types.CallbackQuery, state: FSMContext):
@@ -627,6 +622,105 @@ async def admin_broadcast_message(message: types.Message, state: FSMContext):
         except Exception as e:
             logging.error(f"Failed to send to {user_id}: {e}")
     await message.answer(f"تم إرسال الرسالة إلى {sent_count} مستخدم. شكراً لك! 💖", reply_markup=main_keyboard)
+    await state.clear()
+
+# Admin send message to user
+@dp.callback_query(lambda c: c.data == "admin_send_user_msg")
+async def admin_send_user_msg_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("غير مصرح لك!")
+        return
+    await callback.message.edit_text("أدخل ID التلغرام للمستخدم (رقم فقط):")
+    await state.set_state(AdminStates.waiting_user_id)
+    await callback.answer()
+
+@dp.message(AdminStates.waiting_user_id)
+async def admin_waiting_user_id(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("غير مصرح لك!")
+        await state.clear()
+        return
+    try:
+        user_id = int(message.text)
+        await state.update_data(user_id=user_id)
+        await message.answer("الآن أدخل الرسالة التي تريد إرسالها:")
+        await state.set_state(AdminStates.waiting_user_message)
+    except ValueError:
+        await message.answer("يرجى إدخال رقم صحيح لـ ID المستخدم.")
+
+@dp.message(AdminStates.waiting_user_message)
+async def admin_send_user_message(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("غير مصرح لك!")
+        await state.clear()
+        return
+    data = await state.get_data()
+    user_id = data['user_id']
+    user_msg = message.text
+    try:
+        await bot.send_message(user_id, user_msg)
+        await message.answer("تم إرسال الرسالة بنجاح! 💖", reply_markup=main_keyboard)
+    except Exception as e:
+        await message.answer(f"حدث خطأ في إرسال الرسالة: {e}")
+    await state.clear()
+
+# Admin attendance check
+@dp.callback_query(lambda c: c.data == "admin_attendance")
+async def admin_attendance_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("غير مصرح لك!")
+        return
+    attendance_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="تفقد اجتماع", callback_data="attendance_meeting")],
+        [InlineKeyboardButton(text="تفقد مبادرة", callback_data="attendance_initiative")],
+        [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
+    ])
+    await callback.message.edit_text("اختر نوع التفقد:", reply_markup=attendance_keyboard)
+    await state.set_state(AdminStates.waiting_attendance_type)
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "attendance_meeting")
+async def attendance_meeting(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("غير مصرح لك!")
+        return
+    await state.update_data(attendance_type="تفقد اجتماع")
+    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
+    ])
+    await callback.message.edit_text("أدخل أسماء المتطوعين الحاضرين مفصولة بفاصلة (مثال: أحمد محمد, فاطمة علي):", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_attendance_names)
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "attendance_initiative")
+async def attendance_initiative(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("غير مصرح لك!")
+        return
+    await state.update_data(attendance_type="تفقد مبادرة")
+    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
+    ])
+    await callback.message.edit_text("أدخل أسماء المتطوعين الحاضرين مفصولة بفاصلة (مثال: أحمد محمد, فاطمة علي):", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_attendance_names)
+    await callback.answer()
+
+@dp.message(AdminStates.waiting_attendance_names)
+async def admin_attendance_names(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("غير مصرح لك!")
+        await state.clear()
+        return
+    data = await state.get_data()
+    attendance_type = data['attendance_type']
+    names = message.text
+    names_list = [name.strip() for name in names.split(',')]
+    report = f"تقرير {attendance_type} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:\n\nالحاضرون:\n" + "\n".join(f"- {name}" for name in names_list)
+    await bot.send_message(
+        ATTENDANCE_GROUP_ID,
+        report
+    )
+    await message.answer(f"تم إرسال تقرير {attendance_type} بنجاح! 🌟", reply_markup=main_keyboard)
     await state.clear()
 
 # Admin upload photos
