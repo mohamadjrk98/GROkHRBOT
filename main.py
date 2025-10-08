@@ -21,6 +21,7 @@ logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('CHAT_ADMIN_ID'))
+EXCUSE_GROUP_ID = -4737111167  # Chat ID for the excuses group
 
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
@@ -241,7 +242,7 @@ async def confirm_excuse(callback: types.CallbackQuery, state: FSMContext):
         ]
     ])
     await bot.send_message(
-        ADMIN_ID,
+        EXCUSE_GROUP_ID,
         f"طلب اعتذار جديد #{request_id}\n"
         f"مقدم الطلب: {data['name']}\n"
         f"رقم الطلب: {request_id}\n"
