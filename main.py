@@ -36,6 +36,8 @@ meeting_schedules = {
     'الفريق المركزي': 'غير محدد'
 }
 
+team_photos = []  # List to store photo file_ids, e.g., [{'file_id': 'id1'}, {'file_id': 'id2'}]
+
 class ExcuseStates(StatesGroup):
     waiting_name = State()
     waiting_activity_type = State()
@@ -57,6 +59,7 @@ class AdminStates(StatesGroup):
     waiting_meeting_type = State()
     waiting_meeting_date = State()
     waiting_broadcast_message = State()
+    waiting_upload_photo = State()
 
 class FeedbackStates(StatesGroup):
     waiting_feedback = State()
@@ -66,7 +69,8 @@ main_keyboard = ReplyKeyboardMarkup(
         [KeyboardButton(text="اعتذار"), KeyboardButton(text="إجازة")],
         [KeyboardButton(text="تتبع طلباتي"), KeyboardButton(text="مراجع الفريق")],
         [KeyboardButton(text="أهدني عبارة"), KeyboardButton(text="لا تنس ذكر الله")],
-        [KeyboardButton(text="استعلامات"), KeyboardButton(text="اقتراحات")]
+        [KeyboardButton(text="استعلامات"), KeyboardButton(text="اقتراحات")],
+        [KeyboardButton(text="تحميل صور الفريق الاخيرة")]
     ],
     resize_keyboard=True
 )
@@ -498,6 +502,22 @@ async def meeting_central(callback: types.CallbackQuery):
     await callback.message.edit_text(f"موعد الفريق المركزي: {date}\n\nمركزنا هو قلب الفريق! ❤️", reply_markup=back_keyboard)
     await callback.answer()
 
+@dp.message(lambda message: message.text == "تحميل صور الفريق الاخيرة")
+async def download_team_photos(message: types.Message):
+    if not team_photos:
+        await message.answer("لا توجد صور متاحة حالياً. شكراً لاهتمامك! 💕", reply_markup=main_keyboard)
+        return
+    # Send the last 5 photos or all if less
+    num_photos = min(5, len(team_photos))
+    for i in range(num_photos):
+        photo_info = team_photos[-1 - i]  # Reverse to get latest first
+        await bot.send_photo(
+            message.chat.id,
+            photo_info['file_id'],
+            caption=f"صورة الفريق الأخيرة ({i+1}/{num_photos}) 🌟"
+        )
+    await message.answer("تم تحميل أحدث الصور! استمتع بذكرياتنا معاً. 💖", reply_markup=main_keyboard)
+
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
@@ -508,7 +528,9 @@ async def admin_panel(message: types.Message, state: FSMContext):
         [InlineKeyboardButton(text="وضع موعد دعم أول", callback_data="admin_support1")],
         [InlineKeyboardButton(text="وضع موعد دعم ثاني", callback_data="admin_support2")],
         [InlineKeyboardButton(text="وضع موعد مركزي", callback_data="admin_central")],
-        [InlineKeyboardButton(text="إرسال بث للجميع", callback_data="admin_broadcast")]
+        [InlineKeyboardButton(text="إرسال بث للجميع", callback_data="admin_broadcast")],
+        [InlineKeyboardButton(text="رفع صور الفريق", callback_data="admin_upload_photos")],
+        [InlineKeyboardButton(text="حذف صور الفريق", callback_data="admin_delete_photos")]
     ])
     await message.answer("لوحة التحكم للأدمن: نحن فخورون بإدارتك الرائعة! 🌟", reply_markup=admin_keyboard)
     await state.set_state(AdminStates.waiting_meeting_type)
@@ -605,6 +627,74 @@ async def admin_broadcast_message(message: types.Message, state: FSMContext):
             logging.error(f"Failed to send to {user_id}: {e}")
     await message.answer(f"تم إرسال الرسالة إلى {sent_count} مستخدم. شكراً لك! 💖", reply_markup=main_keyboard)
     await state.clear()
+
+# Admin upload photos
+@dp.callback_query(lambda c: c.data == "admin_upload_photos")
+async def admin_upload_photos_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("غير مصرح لك!")
+        return
+    await callback.message.edit_text("أرسل الصور الجديدة للفريق (يمكنك إرسال عدة صور): 💕")
+    await state.set_state(AdminStates.waiting_upload_photo)
+    await callback.answer()
+
+@dp.message(AdminStates.waiting_upload_photo)
+async def admin_upload_photo(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("غير مصرح لك!")
+        await state.clear()
+        return
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        team_photos.append({'file_id': file_id})
+        await message.answer("تم رفع الصورة بنجاح! أرسل المزيد إذا أردت، أو /admin للعودة. 🌟")
+    else:
+        await message.answer("يرجى إرسال صورة فقط. 💕")
+    # Stay in state to allow multiple uploads
+
+@dp.callback_query(lambda c: c.data == "admin_delete_photos")
+async def admin_delete_photos_start(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("غير مصرح لك!")
+        return
+    if not team_photos:
+        await callback.message.edit_text("لا توجد صور للحذف حالياً. 💕")
+        await callback.answer()
+        return
+    # Send all photos with delete buttons
+    for idx, photo_info in enumerate(team_photos):
+        delete_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="حذف هذه الصورة", callback_data=f"delete_photo_{idx}")],
+            [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
+        ])
+        await bot.send_photo(
+            callback.from_user.id,
+            photo_info['file_id'],
+            caption=f"صورة الفريق #{idx + 1}",
+            reply_markup=delete_keyboard
+        )
+    await callback.message.edit_text("اختر الصورة التي تريد حذفها من الرسائل أعلاه. شكراً لإدارتك! 🌹")
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("delete_photo_"))
+async def delete_photo(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("غير مصرح لك!")
+        return
+    try:
+        idx = int(c.data.split("_")[2])
+        if 0 <= idx < len(team_photos):
+            del team_photos[idx]
+            await callback.message.edit_caption(
+                caption=callback.message.caption + "\n\nتم الحذف بنجاح! 💖",
+                reply_markup=None
+            )
+        else:
+            await callback.answer("الصورة غير موجودة.")
+    except Exception as e:
+        logging.error(f"Error deleting photo: {e}")
+        await callback.answer("حدث خطأ في الحذف.")
+    await callback.answer()
 
 # دالة التشغيل الرئيسية عند بدء البوت
 async def on_startup(bot: Bot) -> None:
