@@ -4,7 +4,9 @@ import asyncio
 import logging
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, StateFilter, Text
+from aiogram.filters.command import Command
+from aiogram.filters.state import StateFilter
+from aiogram.filters.text import Text
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton
