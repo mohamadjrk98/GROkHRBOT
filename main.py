@@ -4,7 +4,7 @@ import asyncio
 import logging
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, StateFilter, Text
+from aiogram.filters import Command, StateFilter # Corrected: Removed 'Text' import
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton
@@ -24,13 +24,23 @@ logger = logging.getLogger(__name__)
 # Environment variables and constants
 # NOTE: Ensure BOT_TOKEN, CHAT_ADMIN_ID, RENDER_EXTERNAL_HOSTNAME, WEBHOOK_SECRET are set in your environment
 TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_IDS = [int(os.getenv('CHAT_ADMIN_ID')), 5780307552]  # Added second admin
-# NOTE: Replace these with your actual chat IDs (if they are correct)
+# Use a default ID if the environment variable is not set to prevent runtime errors
+try:
+    ADMIN_IDS = [int(os.getenv('CHAT_ADMIN_ID')), 5780307552]
+except (TypeError, ValueError):
+    ADMIN_IDS = [5780307552] # Fallback if primary admin ID is missing or invalid
+    logger.warning("CHAT_ADMIN_ID not set or invalid. Using fallback admin ID only.")
+    
+# NOTE: Replace these with your actual chat IDs
 EXCUSE_GROUP_ID = -4737111167  # Chat ID for the excuses group
 LEAVE_GROUP_ID = -4868672688  # Chat ID for the leave group
 ATTENDANCE_GROUP_ID = -4966592161  # Chat ID for the attendance group
 
 # Bot and Dispatcher setup
+if not TOKEN:
+    logger.error("BOT_TOKEN is not set. Bot cannot run.")
+    # You should handle this case by exiting the application in main(), but keep the definitions for completeness
+    
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -246,7 +256,7 @@ async def check_webhook(message: types.Message):
         logger.error(f"Error in check_webhook: {e}")
 
 # Back navigation handlers
-@dp.message(lambda message: message.text == "رجوع")
+@dp.message(F.text == "رجوع")
 async def back_to_main(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("تم العودة إلى القائمة الرئيسية. نحن هنا لمساعدتك دائماً! 💕", reply_markup=main_keyboard)
@@ -263,14 +273,14 @@ async def start_handler(message: types.Message):
     )
 
 # Feedback handlers
-@dp.message(lambda message: message.text == "اقتراحات")
+@dp.message(F.text == "اقتراحات")
 async def feedback_start(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     await message.answer("شكراً لاهتمامك بتقديم اقتراح! اختر نوع الاقتراح: 💕", reply_markup=feedback_keyboard)
     await state.set_state(FeedbackStates.waiting_type)
     logger.info(f"Feedback state set for user {message.from_user.id}")
 
-# --- الأزرار المصححة هنا ---
+# --- CORRECTED Feedback Button Handlers ---
 @dp.message(F.text == "اقتراح تطوير البوت", StateFilter(FeedbackStates.waiting_type))
 async def feedback_bot_start(message: types.Message, state: FSMContext):
     logger.info(f"Feedback bot from {message.from_user.id}")
@@ -319,7 +329,7 @@ async def feedback_initiative_start(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     await message.answer("شكراً لاقتراح مبادرة! يرجى ملء الفورم التالي:\n\n# إسم المبادرة الرئيسي:", reply_markup=back_keyboard)
     await state.set_state(FeedbackStates.waiting_initiative_name)
-# --- نهاية الأزرار المصححة ---
+# --- END CORRECTED Feedback Button Handlers ---
 
 @dp.message(FeedbackStates.waiting_initiative_name)
 async def feedback_initiative_name(message: types.Message, state: FSMContext):
@@ -402,7 +412,7 @@ async def feedback_initiative_success(message: types.Message, state: FSMContext)
     await state.clear()
 
 # Excuse handlers
-@dp.message(lambda message: message.text == "اعتذار")
+@dp.message(F.text == "اعتذار")
 async def excuse_start(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     await message.answer("ما اسمك الكامل؟ نحن نقدر جهودك دائماً! 😊", reply_markup=back_keyboard)
@@ -444,7 +454,7 @@ async def excuse_reason(message: types.Message, state: FSMContext):
     )
     await state.set_state(ExcuseStates.waiting_confirm)
 
-# --- زر تأكيد الطلب المصحح لـ "اعتذار" ---
+# --- CORRECTED "تأكيد الطلب" for Excuse ---
 @dp.message(F.text == "تأكيد الطلب", StateFilter(ExcuseStates.waiting_confirm))
 async def confirm_excuse(message: types.Message, state: FSMContext):
     logger.info(f"Confirm excuse from {message.from_user.id}")
@@ -471,11 +481,10 @@ async def confirm_excuse(message: types.Message, state: FSMContext):
         reply_markup=admin_keyboard
     )
     await state.clear()
-# --- نهاية زر تأكيد الطلب المصحح ---
-
+# --- END CORRECTED "تأكيد الطلب" for Excuse ---
 
 # Leave handlers
-@dp.message(lambda message: message.text == "إجازة")
+@dp.message(F.text == "إجازة")
 async def leave_start(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     await message.answer("ما اسمك الكامل كمتطوع؟ نحن نقدر جهودك دائماً! 😊", reply_markup=back_keyboard)
@@ -526,7 +535,7 @@ async def leave_end_date(message: types.Message, state: FSMContext):
     )
     await state.set_state(LeaveStates.waiting_confirm)
 
-# --- زر تأكيد الطلب المصحح لـ "إجازة" ---
+# --- CORRECTED "تأكيد الطلب" for Leave ---
 @dp.message(F.text == "تأكيد الطلب", StateFilter(LeaveStates.waiting_confirm))
 async def confirm_leave(message: types.Message, state: FSMContext):
     logger.info(f"Confirm leave from {message.from_user.id}")
@@ -554,7 +563,7 @@ async def confirm_leave(message: types.Message, state: FSMContext):
         reply_markup=admin_keyboard
     )
     await state.clear()
-# --- نهاية زر تأكيد الطلب المصحح ---
+# --- END CORRECTED "تأكيد الطلب" for Leave ---
 
 # Request approval/rejection handlers (keep inline for admin group)
 @dp.callback_query(F.data.startswith("approve_"))
@@ -586,17 +595,16 @@ async def reject_request(callback: types.CallbackQuery):
     await callback.answer()
 
 # Track requests handler
-@dp.message(lambda message: message.text == "تتبع طلباتي")
+@dp.message(F.text == "تتبع طلباتي")
 async def track_start(message: types.Message, state: FSMContext):
-    # This feature is intentionally disabled as per your original code
     await message.answer(" ميزة التتبع لسا ما جهزت . حكي محمد الجرك مطور البوت و المسؤول اللطيف. 💕", reply_markup=back_keyboard)
 
 # References handlers
-@dp.message(lambda message: message.text == "مراجع الفريق")
+@dp.message(F.text == "مراجع الفريق")
 async def references_handler(message: types.Message):
     await message.answer("نحن فخورون بقيمنا في فريق أبناء الأرض! 🌟\nاختر المرجع:", reply_markup=refs_keyboard)
 
-@dp.message(lambda message: message.text == "مدونة السلوك")
+@dp.message(F.text == "مدونة السلوك")
 async def code_of_conduct(message: types.Message):
     logger.info(f"Code of conduct from {message.from_user.id}")
     text = (
@@ -609,7 +617,7 @@ async def code_of_conduct(message: types.Message):
     )
     await message.answer(text, reply_markup=back_keyboard)
 
-@dp.message(lambda message: message.text == "بنود وقوانين الفريق")
+@dp.message(F.text == "بنود وقوانين الفريق")
 async def rules(message: types.Message):
     logger.info(f"Rules from {message.from_user.id}")
     text = (
@@ -624,52 +632,52 @@ async def rules(message: types.Message):
     await message.answer(text, reply_markup=back_keyboard)
 
 # Motivational and Dhikr handlers
-@dp.message(lambda message: message.text == "أهدني عبارة")
+@dp.message(F.text == "أهدني عبارة")
 async def phrase_handler(message: types.Message):
     phrase = random.choice(motivational_phrases)
     await message.answer(f"{phrase} 💖", reply_markup=main_keyboard)
 
-@dp.message(lambda message: message.text == "لا تنس ذكر الله")
+@dp.message(F.text == "لا تنس ذكر الله")
 async def dhikr_handler(message: types.Message):
     dhikr = "\n".join(dhikr_phrases)
     await message.answer(f"{dhikr} 🌟", reply_markup=main_keyboard)
 
 # Inquiries handlers
-@dp.message(lambda message: message.text == "استعلامات")
+@dp.message(F.text == "استعلامات")
 async def inquiries_handler(message: types.Message):
     await message.answer("نحن هنا لنجيب على استفساراتك بكل حب! 💕\nاختر نوع الاستعلام:", reply_markup=inquiries_keyboard)
 
-@dp.message(lambda message: message.text == "استعلام عن اجتماع")
+@dp.message(F.text == "استعلام عن اجتماع")
 async def inquire_meeting(message: types.Message):
     logger.info(f"Inquire meeting from {message.from_user.id}")
     await message.answer("اختر الاجتماع الذي تهتم به: 😊", reply_markup=meeting_keyboard)
 
-@dp.message(lambda message: message.text == "الاجتماع العام")
+@dp.message(F.text == "الاجتماع العام")
 async def meeting_general(message: types.Message):
     logger.info(f"Meeting general from {message.from_user.id}")
     date = meeting_schedules.get('الاجتماع العام', 'لسا ما تحدد')
     await message.answer(f"موعد الاجتماع العام: {date}\n\nنحن نتطلع للقائك هناك! 🌹", reply_markup=back_keyboard)
 
-@dp.message(lambda message: message.text == "اجتماع فريق الدعم الاول")
+@dp.message(F.text == "اجتماع فريق الدعم الاول")
 async def meeting_support1(message: types.Message):
     logger.info(f"Meeting support1 from {message.from_user.id}")
     date = meeting_schedules.get('اجتماع فريق الدعم الاول', 'لسا ما تحدد')
     await message.answer(f"موعد اجتماع فريق الدعم الاول: {date}\n\nمعاً نبني الدعم الأقوى! 💪", reply_markup=back_keyboard)
 
-@dp.message(lambda message: message.text == "اجتماع فريق الدعم الثاني")
+@dp.message(F.text == "اجتماع فريق الدعم الثاني")
 async def meeting_support2(message: types.Message):
     logger.info(f"Meeting support2 from {message.from_user.id}")
     date = meeting_schedules.get('فريق الدعم الثاني', 'لسا ما تحدد')
     await message.answer(f"موعد فريق الدعم الثاني: {date}\n\nدعمكم يلهمنا دائماً! 😊", reply_markup=back_keyboard)
 
-@dp.message(lambda message: message.text == "اجتماع الفريق المركزي")
+@dp.message(F.text == "اجتماع الفريق المركزي")
 async def meeting_central(message: types.Message):
     logger.info(f"Meeting central from {message.from_user.id}")
     date = meeting_schedules.get('الفريق المركزي', 'لسا ما تحدد')
     await message.answer(f"موعد الفريق المركزي: {date}\n\nمركزنا هو قلب الفريق! ❤️", reply_markup=back_keyboard)
 
 # Team photos handler
-@dp.message(lambda message: message.text == "تحميل صور الفريق الاخيرة")
+@dp.message(F.text == "تحميل صور الفريق الاخيرة")
 async def download_team_photos(message: types.Message):
     if not team_photos:
         await message.answer("لا توجد صور متاحة حالياً. شكراً لاهتمامك! 💕", reply_markup=main_keyboard)
@@ -699,7 +707,7 @@ async def admin_panel(message: types.Message, state: FSMContext):
     await message.answer("لوحة التحكم للأدمن: نحن فخورون بإدارتك الرائعة! 🌟", reply_markup=admin_keyboard)
 
 # Admin meeting schedule handlers
-@dp.message(lambda message: message.text == "وضع موعد الاجتماع العام")
+@dp.message(F.text == "وضع موعد الاجتماع العام")
 async def admin_general(message: types.Message, state: FSMContext):
     logger.info(f"Admin general from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -709,7 +717,7 @@ async def admin_general(message: types.Message, state: FSMContext):
     await message.answer("أدخل موعد الاجتماع العام (YYYY-MM-DD HH:MM): شكراً لجهودك في تنظيمنا! 😊", reply_markup=back_keyboard)
     await state.set_state(AdminStates.waiting_meeting_date)
 
-@dp.message(lambda message: message.text == "وضع موعد دعم أول")
+@dp.message(F.text == "وضع موعد دعم أول")
 async def admin_support1(message: types.Message, state: FSMContext):
     logger.info(f"Admin support1 from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -719,7 +727,7 @@ async def admin_support1(message: types.Message, state: FSMContext):
     await message.answer("أدخل موعد اجتماع فريق الدعم الاول (YYYY-MM-DD HH:MM):", reply_markup=back_keyboard)
     await state.set_state(AdminStates.waiting_meeting_date)
 
-@dp.message(lambda message: message.text == "وضع موعد دعم ثاني")
+@dp.message(F.text == "وضع موعد دعم ثاني")
 async def admin_support2(message: types.Message, state: FSMContext):
     logger.info(f"Admin support2 from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -729,7 +737,7 @@ async def admin_support2(message: types.Message, state: FSMContext):
     await message.answer("أدخل موعد فريق الدعم الثاني (YYYY-MM-DD HH:MM):", reply_markup=back_keyboard)
     await state.set_state(AdminStates.waiting_meeting_date)
 
-@dp.message(lambda message: message.text == "وضع موعد مركزي")
+@dp.message(F.text == "وضع موعد مركزي")
 async def admin_central(message: types.Message, state: FSMContext):
     logger.info(f"Admin central from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -753,7 +761,7 @@ async def admin_set_date(message: types.Message, state: FSMContext):
     await state.clear()
 
 # Admin broadcast handlers
-@dp.message(lambda message: message.text == "إرسال بث للجميع")
+@dp.message(F.text == "إرسال بث للجميع")
 async def admin_broadcast_start(message: types.Message, state: FSMContext):
     logger.info(f"Admin broadcast from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -784,7 +792,7 @@ async def admin_broadcast_message(message: types.Message, state: FSMContext):
     await state.clear()
 
 # Admin send user message handlers
-@dp.message(lambda message: message.text == "إرسال رسالة لمستخدم")
+@dp.message(F.text == "إرسال رسالة لمستخدم")
 async def admin_send_user_msg_start(message: types.Message, state: FSMContext):
     logger.info(f"Admin send user msg from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -825,7 +833,7 @@ async def admin_send_user_message(message: types.Message, state: FSMContext):
     await state.clear()
 
 # Admin attendance handlers
-@dp.message(lambda message: message.text == "تفقد")
+@dp.message(F.text == "تفقد")
 async def admin_attendance_start(message: types.Message, state: FSMContext):
     logger.info(f"Admin attendance from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -833,7 +841,7 @@ async def admin_attendance_start(message: types.Message, state: FSMContext):
         return
     await message.answer("اختر نوع التفقد:", reply_markup=attendance_keyboard)
 
-@dp.message(lambda message: message.text == "تفقد اجتماع")
+@dp.message(F.text == "تفقد اجتماع")
 async def attendance_meeting(message: types.Message, state: FSMContext):
     logger.info(f"Attendance meeting from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -843,7 +851,7 @@ async def attendance_meeting(message: types.Message, state: FSMContext):
     await message.answer("أدخل أسماء المتطوعين الحاضرين مفصولة بفاصلة (مثال: أحمد محمد, فاطمة علي):", reply_markup=back_keyboard)
     await state.set_state(AdminStates.waiting_attendance_names)
 
-@dp.message(lambda message: message.text == "تفقد مبادرة")
+@dp.message(F.text == "تفقد مبادرة")
 async def attendance_initiative(message: types.Message, state: FSMContext):
     logger.info(f"Attendance initiative from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -876,7 +884,7 @@ async def admin_attendance_names(message: types.Message, state: FSMContext):
     await state.clear()
 
 # Admin photo upload handlers
-@dp.message(lambda message: message.text == "رفع صور الفريق")
+@dp.message(F.text == "رفع صور الفريق")
 async def admin_upload_photos_start(message: types.Message, state: FSMContext):
     logger.info(f"Admin upload photos from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -889,13 +897,10 @@ async def admin_upload_photos_start(message: types.Message, state: FSMContext):
 async def admin_upload_photo(message: types.Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         await message.answer("غير مصرح لك!")
-        # Keep the state clear to allow returning to main menu via "رجوع"
         return
 
-    # Check for photo and add to global list
     file_id = message.photo[-1].file_id
     team_photos.append({'file_id': file_id})
-    # Keep the user in the state to allow multiple uploads
     await message.answer("تم رفع الصورة بنجاح! أرسل المزيد إذا أردت، أو اضغط /admin للعودة إلى لوحة الأدمن. 🌟")
 
 
@@ -907,7 +912,7 @@ async def admin_upload_photo_invalid(message: types.Message, state: FSMContext):
 
 
 # Admin photo delete handlers
-@dp.message(lambda message: message.text == "حذف صور الفريق")
+@dp.message(F.text == "حذف صور الفريق")
 async def admin_delete_photos_start(message: types.Message):
     logger.info(f"Admin delete photos from {message.from_user.id}")
     if message.from_user.id not in ADMIN_IDS:
@@ -921,14 +926,11 @@ async def admin_delete_photos_start(message: types.Message):
     num_photos_to_show = min(5, len(team_photos))
     await message.answer(f"يتم عرض آخر {num_photos_to_show} صور. اختر الصورة التي تريد حذفها:")
     
-    # We iterate backwards from the end of the list to show the latest photos first
     for i in range(1, num_photos_to_show + 1):
-        # Calculate the index in the global list
         idx = len(team_photos) - i
         photo_info = team_photos[idx]
         
         delete_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            # We pass the real index (idx) to the callback data
             [InlineKeyboardButton(text="حذف هذه الصورة", callback_data=f"delete_photo_{idx}")]
         ])
         
@@ -943,7 +945,6 @@ async def admin_delete_photos_start(message: types.Message):
             logger.error(f"Error showing photo for deletion: {e}")
             await message.answer(f"حدث خطأ في عرض الصورة رقم {idx + 1}.")
             
-    # Send a final message to return to admin menu
     await message.answer("بعد الحذف، اضغط /admin للعودة إلى لوحة الأدمن.", reply_markup=admin_keyboard)
 
 
@@ -954,16 +955,12 @@ async def delete_photo(callback: types.CallbackQuery):
         await callback.answer("غير مصرح لك!")
         return
     try:
-        # Get the index from the callback data
         idx_str = callback.data.split("_")[2]
         idx = int(idx_str)
         
-        # Check if the index is valid and the photo still exists
         if 0 <= idx < len(team_photos) and team_photos[idx].get('file_id'):
-            # Remove the photo from the global list
             del team_photos[idx]
             
-            # Update the message caption to indicate deletion
             await callback.message.edit_caption(
                 caption=callback.message.caption + "\n\nتم الحذف بنجاح! 💖",
                 reply_markup=None # Remove the delete button
@@ -974,7 +971,6 @@ async def delete_photo(callback: types.CallbackQuery):
         logger.error(f"Error deleting photo: {e}")
         await callback.answer("حدث خطأ في الحذف.")
     
-    # Send an immediate notification to the user
     await callback.answer("تم حذف الصورة.")
 
 # Startup function
@@ -983,12 +979,9 @@ async def on_startup(bot: Bot) -> None:
     webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')}/webhook"
     webhook_secret = os.getenv('WEBHOOK_SECRET', 'default_secret')
     
-    # Check if we have a token and a hostname/secret to proceed with webhook
     if not TOKEN:
-        logger.error("BOT_TOKEN is not set. Bot will not start.")
+        logger.error("BOT_TOKEN is not set. Bot will not set webhook.")
         return
-    if 'your-app.onrender.com' in webhook_url and not os.getenv('RENDER_EXTERNAL_HOSTNAME'):
-        logger.warning("RENDER_EXTERNAL_HOSTNAME is not set. Using default placeholder. Webhook might fail.")
 
     try:
         await bot.set_webhook(url=webhook_url, secret_token=webhook_secret, allowed_updates=dp.resolve_used_update_types())
@@ -998,7 +991,6 @@ async def on_startup(bot: Bot) -> None:
     except Exception as e:
         logger.error(f"Failed to set webhook: {e}")
         
-    # Inform admins that the bot has started (optional, for debugging)
     for admin_id in ADMIN_IDS:
         try:
             await bot.send_message(admin_id, "البوت أعيد تشغيله بنجاح! 🤖")
@@ -1024,7 +1016,6 @@ def main() -> None:
     webhook_requests_handler.register(app, path=webhook_path)
     setup_application(app, dp, bot=bot)
     
-    # Use environment variables for host and port for deployment (e.g., Render)
     port = int(os.getenv('PORT', 8080)) # Default to 8080 if PORT is not set
     host = '0.0.0.0'
     
@@ -1032,7 +1023,6 @@ def main() -> None:
     web.run_app(app, host=host, port=port)
 
 if __name__ == "__main__":
-    # If the TOKEN is missing, log an error and exit gracefully
     if not TOKEN:
         logger.error("BOT_TOKEN is not set. Please set the environment variable.")
     else:
