@@ -4,7 +4,7 @@ import asyncio
 import logging
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, StateFilter # Corrected: Removed 'Text' import
+from aiogram.filters import Command, StateFilter 
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton
@@ -39,7 +39,6 @@ ATTENDANCE_GROUP_ID = -4966592161  # Chat ID for the attendance group
 # Bot and Dispatcher setup
 if not TOKEN:
     logger.error("BOT_TOKEN is not set. Bot cannot run.")
-    # You should handle this case by exiting the application in main(), but keep the definitions for completeness
     
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
@@ -107,7 +106,7 @@ feedback_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="اقتراح تطوير البوت")],
         [KeyboardButton(text="اقتراح مبادرة")],
-        [KeyboardButton(text="آخر")],
+        [KeyboardButton(text="آخر")], # هذا الزر سيُستخدم للتقييم السري
         [KeyboardButton(text="رجوع")]
     ],
     resize_keyboard=True,
@@ -221,7 +220,7 @@ class AdminStates(StatesGroup):
 class FeedbackStates(StatesGroup):
     waiting_type = State()
     waiting_bot_suggestion = State()
-    waiting_other_suggestion = State()
+    waiting_other_suggestion = State() # تُستخدم الآن للاقتراحات/التقييمات السرية
     waiting_initiative_name = State()
     waiting_initiative_intro = State()
     waiting_initiative_goals = State()
@@ -237,7 +236,7 @@ async def send_to_admins(text: str):
     """Send message to all admins."""
     for admin_id in ADMIN_IDS:
         try:
-            await bot.send_message(admin_id, text)
+            await bot.send_message(admin_id, text, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
             logger.error(f"Failed to send to admin {admin_id}: {e}")
 
@@ -280,7 +279,6 @@ async def feedback_start(message: types.Message, state: FSMContext):
     await state.set_state(FeedbackStates.waiting_type)
     logger.info(f"Feedback state set for user {message.from_user.id}")
 
-# --- CORRECTED Feedback Button Handlers ---
 @dp.message(F.text == "اقتراح تطوير البوت", StateFilter(FeedbackStates.waiting_type))
 async def feedback_bot_start(message: types.Message, state: FSMContext):
     logger.info(f"Feedback bot from {message.from_user.id}")
@@ -294,34 +292,50 @@ async def feedback_bot_message(message: types.Message, state: FSMContext):
     user_name = message.from_user.first_name or "غير محدد"
     suggestion_text = message.text
     await send_to_admins(
-        f"اقتراح تطوير البوت:\n"
-        f"المرسل: {user_name} (ID: {message.from_user.id})\n"
-        f"الاقتراح: {suggestion_text}\n\n"
-        f"تاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        f"**اقتراح تطوير البوت:**\n"
+        f"**المرسل:** {user_name} (ID: {message.from_user.id})\n"
+        f"**الاقتراح:** {suggestion_text}\n\n"
+        f"**تاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
     await message.answer("شكراً جزيلاً لاقتراحك! سنراجعه بعناية لتحسين تجربتك معنا. 🌟", reply_markup=main_keyboard)
     await state.clear()
 
+# --- التعديل هنا: استخدام "آخر" كتقييم سري ---
 @dp.message(F.text == "آخر", StateFilter(FeedbackStates.waiting_type))
-async def feedback_other_start(message: types.Message, state: FSMContext):
-    logger.info(f"Feedback other from {message.from_user.id}")
+async def feedback_secret_start(message: types.Message, state: FSMContext):
+    logger.info(f"Secret feedback initiated by {message.from_user.id}")
     users.add(message.from_user.id)
-    await message.answer("شكراً لاقتراحك! يرجى كتابة الاقتراح كاملاً: 💕", reply_markup=back_keyboard)
+    
+    await message.answer(
+        "📝 **التقييم السري (آخر)**\n\n"
+        "أهلاً بك! نحن نقدّر صراحتك. يرجى كتابة تقييمك/اقتراحك كاملاً. **لن يتم إرسال هويتك** (لا اسم ولا معرّف) إلى الإدارة. كن صريحاً! 💕", 
+        reply_markup=back_keyboard,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    # نستخدم نفس حالة الاقتراح الآخر
     await state.set_state(FeedbackStates.waiting_other_suggestion)
 
+
 @dp.message(FeedbackStates.waiting_other_suggestion)
-async def feedback_other_message(message: types.Message, state: FSMContext):
+async def feedback_secret_message(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
-    user_name = message.from_user.first_name or "غير محدد"
     suggestion_text = message.text
+    
+    # إرسال الرسالة إلى الأدمنز بدون أي بيانات تعريفية
     await send_to_admins(
-        f"اقتراح آخر:\n"
-        f"المرسل: {user_name} (ID: {message.from_user.id})\n"
-        f"الاقتراح: {suggestion_text}\n\n"
-        f"تاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        f"**📣 تقييم سري جديد (آخر) 📣**\n"
+        f"**المرسل:** (مجهول الهوية - حفاظاً على الخصوصية)\n"
+        f"**الرسالة:**\n{suggestion_text}\n\n"
+        f"**تاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
-    await message.answer("شكراً جزيلاً لاقتراحك! سنراجعه بعناية لتحسين تجربتك معنا. 🌟", reply_markup=main_keyboard)
+    
+    # إرسال رسالة شكر للمستخدم
+    await message.answer(
+        "شكراً جزيلاً لتقييمك الصادق! تم إرسال رسالتك بصفة **سرية تامة** للإدارة. نحن نقدر صراحتك! 🌟", 
+        reply_markup=main_keyboard
+    )
     await state.clear()
+# --- نهاية التعديل ---
 
 @dp.message(F.text == "اقتراح مبادرة", StateFilter(FeedbackStates.waiting_type))
 async def feedback_initiative_start(message: types.Message, state: FSMContext):
@@ -329,7 +343,6 @@ async def feedback_initiative_start(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     await message.answer("شكراً لاقتراح مبادرة! يرجى ملء الفورم التالي:\n\n# إسم المبادرة الرئيسي:", reply_markup=back_keyboard)
     await state.set_state(FeedbackStates.waiting_initiative_name)
-# --- END CORRECTED Feedback Button Handlers ---
 
 @dp.message(FeedbackStates.waiting_initiative_name)
 async def feedback_initiative_name(message: types.Message, state: FSMContext):
@@ -394,18 +407,18 @@ async def feedback_initiative_success(message: types.Message, state: FSMContext)
     await state.update_data(initiative_success=message.text)
     user_name = message.from_user.first_name or "غير محدد"
     initiative_report = (
-        f"اقتراح مبادرة جديد:\n"
-        f"المرسل: {user_name} (ID: {message.from_user.id})\n\n"
-        f"إسم المبادرة الرئيسي: {data['initiative_name']}\n"
-        f"مقدمة المبادرة: {data['initiative_intro']}\n"
-        f"أهداف المبادرة: {data['initiative_goals']}\n"
-        f"الفئة المستهدفة: {data['initiative_target']}\n"
-        f"خطة العمل: {data['initiative_plan']}\n"
-        f"الموارد المطلوبة: {data['initiative_resources']}\n"
-        f"الشركاء والداعمين: {data['initiative_partners']}\n"
-        f"الجدول الزمني: {data['initiative_timeline']}\n"
-        f"قياس النجاح: {message.text}\n\n"
-        f"تاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        f"**اقتراح مبادرة جديد:**\n"
+        f"**المرسل:** {user_name} (ID: {message.from_user.id})\n\n"
+        f"**إسم المبادرة الرئيسي:** {data['initiative_name']}\n"
+        f"**مقدمة المبادرة:** {data['initiative_intro']}\n"
+        f"**أهداف المبادرة:** {data['initiative_goals']}\n"
+        f"**الفئة المستهدفة:** {data['initiative_target']}\n"
+        f"**خطة العمل:** {data['initiative_plan']}\n"
+        f"**الموارد المطلوبة:** {data['initiative_resources']}\n"
+        f"**الشركاء والداعمين:** {data['initiative_partners']}\n"
+        f"**الجدول الزمني:** {data['initiative_timeline']}\n"
+        f"**قياس النجاح:** {message.text}\n\n"
+        f"**تاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
     await send_to_admins(initiative_report)
     await message.answer("شكراً جزيلاً لاقتراحك! سنراجعه بعناية. 🌟", reply_markup=main_keyboard)
@@ -454,7 +467,6 @@ async def excuse_reason(message: types.Message, state: FSMContext):
     )
     await state.set_state(ExcuseStates.waiting_confirm)
 
-# --- CORRECTED "تأكيد الطلب" for Excuse ---
 @dp.message(F.text == "تأكيد الطلب", StateFilter(ExcuseStates.waiting_confirm))
 async def confirm_excuse(message: types.Message, state: FSMContext):
     logger.info(f"Confirm excuse from {message.from_user.id}")
@@ -474,14 +486,13 @@ async def confirm_excuse(message: types.Message, state: FSMContext):
     ])
     await bot.send_message(
         EXCUSE_GROUP_ID,
-        f"طلب اعتذار جديد #{request_id}\n"
-        f"مقدم الطلب: {data['name']}\n"
-        f"رقم الطلب: {request_id}\n"
+        f"**طلب اعتذار جديد #{request_id}**\n"
+        f"**مقدم الطلب:** {data['name']}\n"
+        f"**رقم الطلب:** {request_id}\n"
         f"{activity_details}",
         reply_markup=admin_keyboard
     )
     await state.clear()
-# --- END CORRECTED "تأكيد الطلب" for Excuse ---
 
 # Leave handlers
 @dp.message(F.text == "إجازة")
@@ -535,7 +546,6 @@ async def leave_end_date(message: types.Message, state: FSMContext):
     )
     await state.set_state(LeaveStates.waiting_confirm)
 
-# --- CORRECTED "تأكيد الطلب" for Leave ---
 @dp.message(F.text == "تأكيد الطلب", StateFilter(LeaveStates.waiting_confirm))
 async def confirm_leave(message: types.Message, state: FSMContext):
     logger.info(f"Confirm leave from {message.from_user.id}")
@@ -555,15 +565,14 @@ async def confirm_leave(message: types.Message, state: FSMContext):
     ])
     await bot.send_message(
         LEAVE_GROUP_ID,
-        f"طلب إجازة جديد #{request_id}\n"
-        f"مقدم الطلب: {data['name']}\n"
-        f"رقم الطلب: {request_id}\n"
-        f"سبب الإجازة: {data['reason']}\n"
-        f"التفاصيل: {details}",
+        f"**طلب إجازة جديد #{request_id}**\n"
+        f"**مقدم الطلب:** {data['name']}\n"
+        f"**رقم الطلب:** {request_id}\n"
+        f"**سبب الإجازة:** {data['reason']}\n"
+        f"**التفاصيل:** {details}",
         reply_markup=admin_keyboard
     )
     await state.clear()
-# --- END CORRECTED "تأكيد الطلب" for Leave ---
 
 # Request approval/rejection handlers (keep inline for admin group)
 @dp.callback_query(F.data.startswith("approve_"))
@@ -577,7 +586,7 @@ async def approve_request(callback: types.CallbackQuery):
     request_id = parts[2]
     user_id = int(parts[3])
     await bot.send_message(user_id, f" ابشر! 🎉 تم قبول طلبك #{request_id} بكل فرحة. نحن فخورون بك! 💖")
-    await callback.message.edit_text(callback.message.text + "\n\nتم القبول.")
+    await callback.message.edit_text(callback.message.text + "\n\n**تم القبول.**")
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("reject_"))
@@ -591,7 +600,7 @@ async def reject_request(callback: types.CallbackQuery):
     request_id = parts[2]
     user_id = int(parts[3])
     await bot.send_message(user_id, f"نأسف لإخبارك بذلك، 😔 تم رفض طلبك #{request_id}. يرجى التواصل مع الإدارة للمزيد من التفاصيل. نحن هنا لدعمك!")
-    await callback.message.edit_text(callback.message.text + "\n\nتم الرفض.")
+    await callback.message.edit_text(callback.message.text + "\n\n**تم الرفض.**")
     await callback.answer()
 
 # Track requests handler
@@ -608,7 +617,7 @@ async def references_handler(message: types.Message):
 async def code_of_conduct(message: types.Message):
     logger.info(f"Code of conduct from {message.from_user.id}")
     text = (
-        "مدونة السلوك لفريق أبناء الأرض:\n\n"
+        "**مدونة السلوك لفريق أبناء الأرض:**\n\n"
         "1. الاحترام المتبادل: احترم زملاءك وكل الأطراف.\n"
         "2. الالتزام بالمواعيد: كن دقيقاً في الاجتماعات والأنشطة.\n"
         "3. السرية: احفظ معلومات الفريق سراً.\n"
@@ -621,7 +630,7 @@ async def code_of_conduct(message: types.Message):
 async def rules(message: types.Message):
     logger.info(f"Rules from {message.from_user.id}")
     text = (
-        "بنود وقوانين فريق أبناء الأرض:\n\n"
+        "**بنود وقوانين فريق أبناء الأرض:**\n\n"
         "1. الالتزام بالأهداف الخيرية.\n"
         "2. عدم مشاركة المعلومات الخاصة.\n"
         "3. المشاركة الفعالة في الأنشطة.\n"
@@ -871,7 +880,7 @@ async def admin_attendance_names(message: types.Message, state: FSMContext):
     attendance_type = data['attendance_type']
     names = message.text
     names_list = [name.strip() for name in names.split(',')]
-    report = f"تقرير {attendance_type} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:\n\nالحاضرون:\n" + "\n".join(f"- {name}" for name in names_list)
+    report = f"**تقرير {attendance_type}** - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:\n\n**الحاضرون:**\n" + "\n".join(f"- {name}" for name in names_list)
     try:
         await bot.send_message(
             ATTENDANCE_GROUP_ID,
@@ -962,7 +971,7 @@ async def delete_photo(callback: types.CallbackQuery):
             del team_photos[idx]
             
             await callback.message.edit_caption(
-                caption=callback.message.caption + "\n\nتم الحذف بنجاح! 💖",
+                caption=callback.message.caption + "\n\n**تم الحذف بنجاح! 💖**",
                 reply_markup=None # Remove the delete button
             )
         else:
@@ -993,7 +1002,7 @@ async def on_startup(bot: Bot) -> None:
         
     for admin_id in ADMIN_IDS:
         try:
-            await bot.send_message(admin_id, "البوت أعيد تشغيله بنجاح! 🤖")
+            await bot.send_message(admin_id, "**البوت أعيد تشغيله بنجاح!** 🤖")
         except Exception as e:
             logger.error(f"Failed to send startup message to admin {admin_id}: {e}")
 
