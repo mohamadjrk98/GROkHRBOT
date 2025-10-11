@@ -17,30 +17,70 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
+# Configure logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+# Environment variables and constants
 TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_IDS = [int(os.getenv('CHAT_ADMIN_ID')), 5780307552]  # Added second admin
 EXCUSE_GROUP_ID = -4737111167  # Chat ID for the excuses group
 LEAVE_GROUP_ID = -4868672688  # Chat ID for the leave group
 ATTENDANCE_GROUP_ID = -4966592161  # Chat ID for the attendance group
 
+# Bot and Dispatcher setup
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
+# Global variables
 request_counter = 1
 users = set()
-
 meeting_schedules = {
     'الاجتماع العام': 'غير محدد',
     'اجتماع فريق الدعم الاول': 'غير محدد',
     'فريق الدعم الثاني': 'غير محدد',
     'الفريق المركزي': 'غير محدد'
 }
-
 team_photos = []  # List to store photo file_ids, e.g., [{'file_id': 'id1'}, {'file_id': 'id2'}]
 
+# Lists and data
+motivational_phrases = [
+    "العمل الخيري هو بذرة الأمل في قلوب الناس، ازرعها وستحصد الابتسامات!",
+    "في كل يد تمتد للمساعدة، ينبت أمل جديد. استمر في إشراقك مع فريق أبناء الأرض!",
+    "الأمل يبدأ بخطوة صغيرة، وأنت جزء من هذه الخطوات العظيمة. شكراً لتطوعك!",
+    "كل جهد يبذل في سبيل الخير يعود بالبركة. كن مصدر إلهام دائماً!",
+    "مع فريق أبناء الأرض، نبني جسور الأمل. أنت بطل هذه القصة!",
+    "إنّ التطوع ليس مجرد فعل، بل هو ثقافة عطاء تُثري الروح والمجتمع.",
+    "يُضيء العمل الخيري حياة من حولنا، لكنّه يُنير قلوبنا نحن أولًا.",
+    "كل يد ممدودة بالخير هي بستان يُزهر أملًا في حياة الآخرين.",
+    "نجاح فريق أبناء الأرض يكمن في إيمان أعضائه بأنّ سعادة الآخرين تبدأ بخطواتهم.",
+    "التطوع هو أن تمنح بلا مقابل، وتجد المقابل الأعظم في ابتسامة محتاج.",
+    "يؤمن فريق أبناء الأرض بأنّ قوة المجتمع تقاس بمدى تكاتف أفراده في البذل والعطاء.",
+    "أجمل ما يُخلفه المرء وراءه هو أثر طيب من جهد تطوعي خالص.",
+    "عندما نتطوع، فإننا لا نُغيّر حياة الآخرين فحسب، بل نُعيد اكتشاف أجمل ما في أنفسنا.",
+    "لتكن خطواتك في العمل الخيري أوسع من كلماتك؛ فالأفعال هي التي تصنع الفرق الحقيقي.",
+    "رسالة فريق أبناء الأرض هي دليل على أنّ العمل الجماعي المخلص هو مفتاح التغيير الإيجابي في العالم.",
+    "التطوع هو الجسر الذي نعبُر به من الأنا إلى نحن."
+]
+
+dhikr_phrases = [
+    "سبحان الله\nالحمدلله\nلا إله إلا الله\nالله اكبر\nسبحان الله وبحمده\nسبحان الله العظيم"
+]
+
+# Keyboards
+main_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="اعتذار"), KeyboardButton(text="إجازة")],
+        [KeyboardButton(text="تتبع طلباتي"), KeyboardButton(text="مراجع الفريق")],
+        [KeyboardButton(text="أهدني عبارة"), KeyboardButton(text="لا تنس ذكر الله")],
+        [KeyboardButton(text="استعلامات"), KeyboardButton(text="اقتراحات")],
+        [KeyboardButton(text="تحميل صور الفريق الاخيرة")]
+    ],
+    resize_keyboard=True
+)
+
+# FSM States
 class ExcuseStates(StatesGroup):
     waiting_name = State()
     waiting_activity_type = State()
@@ -82,40 +122,36 @@ class FeedbackStates(StatesGroup):
     waiting_initiative_timeline = State()
     waiting_initiative_success = State()
 
-main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="اعتذار"), KeyboardButton(text="إجازة")],
-        [KeyboardButton(text="تتبع طلباتي"), KeyboardButton(text="مراجع الفريق")],
-        [KeyboardButton(text="أهدني عبارة"), KeyboardButton(text="لا تنس ذكر الله")],
-        [KeyboardButton(text="استعلامات"), KeyboardButton(text="اقتراحات")],
-        [KeyboardButton(text="تحميل صور الفريق الاخيرة")]
-    ],
-    resize_keyboard=True
-)
+# Utility functions
+async def send_to_admins(text: str):
+    """Send message to all admins."""
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_message(admin_id, text)
+        except Exception as e:
+            logger.error(f"Failed to send to admin {admin_id}: {e}")
 
-motivational_phrases = [
-    "العمل الخيري هو بذرة الأمل في قلوب الناس، ازرعها وستحصد الابتسامات!",
-    "في كل يد تمتد للمساعدة، ينبت أمل جديد. استمر في إشراقك مع فريق أبناء الأرض!",
-    "الأمل يبدأ بخطوة صغيرة، وأنت جزء من هذه الخطوات العظيمة. شكراً لتطوعك!",
-    "كل جهد يبذل في سبيل الخير يعود بالبركة. كن مصدر إلهام دائماً!",
-    "مع فريق أبناء الأرض، نبني جسور الأمل. أنت بطل هذه القصة!",
-    "إنّ التطوع ليس مجرد فعل، بل هو ثقافة عطاء تُثري الروح والمجتمع.",
-"يُضيء العمل الخيري حياة من حولنا، لكنّه يُنير قلوبنا نحن أولًا.",
-"كل يد ممدودة بالخير هي بستان يُزهر أملًا في حياة الآخرين.",
-"نجاح فريق أبناء الأرض يكمن في إيمان أعضائه بأنّ سعادة الآخرين تبدأ بخطواتهم.",
-"التطوع هو أن تمنح بلا مقابل، وتجد المقابل الأعظم في ابتسامة محتاج.",
-"يؤمن فريق أبناء الأرض بأنّ قوة المجتمع تقاس بمدى تكاتف أفراده في البذل والعطاء.",
-"أجمل ما يُخلفه المرء وراءه هو أثر طيب من جهد تطوعي خالص.",
-"عندما نتطوع، فإننا لا نُغيّر حياة الآخرين فحسب، بل نُعيد اكتشاف أجمل ما في أنفسنا.",
-"لتكن خطواتك في العمل الخيري أوسع من كلماتك؛ فالأفعال هي التي تصنع الفرق الحقيقي.",
-"رسالة فريق أبناء الأرض هي دليل على أنّ العمل الجماعي المخلص هو مفتاح التغيير الإيجابي في العالم.",
-"التطوع هو الجسر الذي نعبُر به من الأنا إلى نحن."
-]
+# Debug command for webhook info (admin only)
+@dp.message(Command("webhook"))
+async def check_webhook(message: types.Message):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+    try:
+        info = await bot.get_webhook_info()
+        await message.answer(f"Webhook Info: {info}")
+        logger.info(f"Webhook info requested by {message.from_user.id}: {info}")
+    except Exception as e:
+        await message.answer(f"Error getting webhook info: {e}")
+        logger.error(f"Error in check_webhook: {e}")
 
-dhikr_phrases = [
-    "سبحان الله\nالحمدلله\nلا إله إلا الله\nالله اكبر\nسبحان الله وبحمده\nسبحان الله العظيم"
-]
+# General callback logger for debugging
+@dp.callback_query()
+async def debug_callback(callback: types.CallbackQuery):
+    logger.info(f"Received callback: data={callback.data}, from_user={callback.from_user.id}, chat_id={callback.message.chat.id}")
+    await callback.answer()  # Always answer to avoid timeout
 
+# Back navigation handlers
 @dp.message(lambda message: message.text == "رجوع")
 async def back_to_main(message: types.Message, state: FSMContext):
     await state.clear()
@@ -123,11 +159,13 @@ async def back_to_main(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_inline(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Back to main callback from {callback.from_user.id}")
     await state.clear()
     await callback.message.edit_text("تم العودة إلى القائمة الرئيسية. نحن هنا لمساعدتك دائماً! 💕", reply_markup=None)
     await callback.message.reply("اختر الخيار الذي تريده:", reply_markup=main_keyboard)
     await callback.answer()
 
+# Start handler
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     users.add(message.from_user.id)
@@ -138,6 +176,7 @@ async def start_handler(message: types.Message):
         reply_markup=main_keyboard
     )
 
+# Feedback handlers
 @dp.message(lambda message: message.text == "اقتراحات")
 async def feedback_start(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
@@ -149,9 +188,11 @@ async def feedback_start(message: types.Message, state: FSMContext):
     ])
     await message.answer("شكراً لاهتمامك بتقديم اقتراح! اختر نوع الاقتراح: 💕", reply_markup=feedback_keyboard)
     await state.set_state(FeedbackStates.waiting_type)
+    logger.info(f"Feedback state set for user {message.from_user.id}")
 
 @dp.callback_query(F.and_(F.data == "feedback_bot", StateFilter(FeedbackStates.waiting_type)))
 async def feedback_bot_start(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Feedback bot callback from {callback.from_user.id}")
     users.add(callback.from_user.id)
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="رجوع")]],
@@ -167,19 +208,18 @@ async def feedback_bot_message(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     user_name = message.from_user.first_name or "غير محدد"
     suggestion_text = message.text
-    for admin_id in ADMIN_IDS:
-        await bot.send_message(
-            admin_id,
-            f"اقتراح تطوير البوت:\n"
-            f"المرسل: {user_name} (ID: {message.from_user.id})\n"
-            f"الاقتراح: {suggestion_text}\n\n"
-            f"تاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+    await send_to_admins(
+        f"اقتراح تطوير البوت:\n"
+        f"المرسل: {user_name} (ID: {message.from_user.id})\n"
+        f"الاقتراح: {suggestion_text}\n\n"
+        f"تاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
     await message.answer("شكراً جزيلاً لاقتراحك! سنراجعه بعناية لتحسين تجربتك معنا. 🌟", reply_markup=main_keyboard)
     await state.clear()
 
 @dp.callback_query(F.and_(F.data == "feedback_other", StateFilter(FeedbackStates.waiting_type)))
 async def feedback_other_start(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Feedback other callback from {callback.from_user.id}")
     users.add(callback.from_user.id)
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="رجوع")]],
@@ -195,19 +235,18 @@ async def feedback_other_message(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     user_name = message.from_user.first_name or "غير محدد"
     suggestion_text = message.text
-    for admin_id in ADMIN_IDS:
-        await bot.send_message(
-            admin_id,
-            f"اقتراح آخر:\n"
-            f"المرسل: {user_name} (ID: {message.from_user.id})\n"
-            f"الاقتراح: {suggestion_text}\n\n"
-            f"تاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+    await send_to_admins(
+        f"اقتراح آخر:\n"
+        f"المرسل: {user_name} (ID: {message.from_user.id})\n"
+        f"الاقتراح: {suggestion_text}\n\n"
+        f"تاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
     await message.answer("شكراً جزيلاً لاقتراحك! سنراجعه بعناية لتحسين تجربتك معنا. 🌟", reply_markup=main_keyboard)
     await state.clear()
 
 @dp.callback_query(F.and_(F.data == "feedback_initiative", StateFilter(FeedbackStates.waiting_type)))
 async def feedback_initiative_start(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Feedback initiative callback from {callback.from_user.id}")
     users.add(callback.from_user.id)
     back_keyboard = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="رجوع")]],
@@ -334,11 +373,11 @@ async def feedback_initiative_success(message: types.Message, state: FSMContext)
         f"قياس النجاح: {message.text}\n\n"
         f"تاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
-    for admin_id in ADMIN_IDS:
-        await bot.send_message(admin_id, initiative_report)
+    await send_to_admins(initiative_report)
     await message.answer("شكراً جزيلاً لاقتراحك! سنراجعه بعناية. 🌟", reply_markup=main_keyboard)
     await state.clear()
 
+# Excuse handlers
 @dp.message(lambda message: message.text == "اعتذار")
 async def excuse_start(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
@@ -405,6 +444,7 @@ async def excuse_reason(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.and_(F.data == "confirm_excuse", StateFilter(ExcuseStates.waiting_confirm)))
 async def confirm_excuse(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Confirm excuse callback from {callback.from_user.id}")
     global request_counter
     users.add(callback.from_user.id)
     data = await state.get_data()
@@ -430,6 +470,7 @@ async def confirm_excuse(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.clear()
 
+# Leave handlers
 @dp.message(lambda message: message.text == "إجازة")
 async def leave_start(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
@@ -512,6 +553,7 @@ async def leave_end_date(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.and_(F.data == "confirm_leave", StateFilter(LeaveStates.waiting_confirm)))
 async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Confirm leave callback from {callback.from_user.id}")
     global request_counter
     users.add(callback.from_user.id)
     data = await state.get_data()
@@ -538,8 +580,10 @@ async def confirm_leave(callback: types.CallbackQuery, state: FSMContext):
     )
     await state.clear()
 
+# Request approval/rejection handlers
 @dp.callback_query(F.data.startswith("approve_"))
 async def approve_request(callback: types.CallbackQuery):
+    logger.info(f"Approve callback: {callback.data} from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -553,6 +597,7 @@ async def approve_request(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("reject_"))
 async def reject_request(callback: types.CallbackQuery):
+    logger.info(f"Reject callback: {callback.data} from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("مين قلك أنك آدمن ؟!")
         return
@@ -564,6 +609,7 @@ async def reject_request(callback: types.CallbackQuery):
     await callback.message.edit_text(callback.message.text + "\n\nتم الرفض.")
     await callback.answer()
 
+# Track requests handler
 @dp.message(lambda message: message.text == "تتبع طلباتي")
 async def track_start(message: types.Message, state: FSMContext):
     back_keyboard = ReplyKeyboardMarkup(
@@ -573,6 +619,7 @@ async def track_start(message: types.Message, state: FSMContext):
     )
     await message.answer(" ميزة التتبع لسا ما جهزت . حكي محمد الجرك مطور البوت و المسؤول اللطيف. 💕", reply_markup=back_keyboard)
 
+# References handlers
 @dp.message(lambda message: message.text == "مراجع الفريق")
 async def references_handler(message: types.Message):
     refs_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -584,6 +631,7 @@ async def references_handler(message: types.Message):
 
 @dp.callback_query(F.data == "code_of_conduct")
 async def code_of_conduct(callback: types.CallbackQuery):
+    logger.info(f"Code of conduct callback from {callback.from_user.id}")
     text = (
         "مدونة السلوك لفريق أبناء الأرض:\n\n"
         "1. الاحترام المتبادل: احترم زملاءك وكل الأطراف.\n"
@@ -600,6 +648,7 @@ async def code_of_conduct(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "rules")
 async def rules(callback: types.CallbackQuery):
+    logger.info(f"Rules callback from {callback.from_user.id}")
     text = (
         "بنود وقوانين فريق أبناء الأرض:\n\n"
         "1. الالتزام بالأهداف الخيرية.\n"
@@ -615,6 +664,7 @@ async def rules(callback: types.CallbackQuery):
     await callback.message.edit_text(text, reply_markup=back_keyboard)
     await callback.answer()
 
+# Motivational and Dhikr handlers
 @dp.message(lambda message: message.text == "أهدني عبارة")
 async def phrase_handler(message: types.Message):
     phrase = random.choice(motivational_phrases)
@@ -625,6 +675,7 @@ async def dhikr_handler(message: types.Message):
     dhikr = "\n".join(dhikr_phrases)
     await message.answer(f"{dhikr} 🌟", reply_markup=main_keyboard)
 
+# Inquiries handlers
 @dp.message(lambda message: message.text == "استعلامات")
 async def inquiries_handler(message: types.Message):
     inquiries_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -635,6 +686,7 @@ async def inquiries_handler(message: types.Message):
 
 @dp.callback_query(F.data == "inquire_meeting")
 async def inquire_meeting(callback: types.CallbackQuery):
+    logger.info(f"Inquire meeting callback from {callback.from_user.id}")
     meeting_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="الاجتماع العام", callback_data="meeting_general")],
         [InlineKeyboardButton(text="اجتماع فريق الدعم الاول", callback_data="meeting_support1")],
@@ -647,6 +699,7 @@ async def inquire_meeting(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "meeting_general")
 async def meeting_general(callback: types.CallbackQuery):
+    logger.info(f"Meeting general callback from {callback.from_user.id}")
     date = meeting_schedules.get('الاجتماع العام', 'لسا ما تحدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -656,6 +709,7 @@ async def meeting_general(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "meeting_support1")
 async def meeting_support1(callback: types.CallbackQuery):
+    logger.info(f"Meeting support1 callback from {callback.from_user.id}")
     date = meeting_schedules.get('اجتماع فريق الدعم الاول', 'لسا ما تحدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -665,6 +719,7 @@ async def meeting_support1(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "meeting_support2")
 async def meeting_support2(callback: types.CallbackQuery):
+    logger.info(f"Meeting support2 callback from {callback.from_user.id}")
     date = meeting_schedules.get('فريق الدعم الثاني', 'لسا ما تحدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -674,6 +729,7 @@ async def meeting_support2(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "meeting_central")
 async def meeting_central(callback: types.CallbackQuery):
+    logger.info(f"Meeting central callback from {callback.from_user.id}")
     date = meeting_schedules.get('الفريق المركزي', 'لسا ما تحدد')
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -681,6 +737,7 @@ async def meeting_central(callback: types.CallbackQuery):
     await callback.message.edit_text(f"موعد الفريق المركزي: {date}\n\nمركزنا هو قلب الفريق! ❤️", reply_markup=back_keyboard)
     await callback.answer()
 
+# Team photos handler
 @dp.message(lambda message: message.text == "تحميل صور الفريق الاخيرة")
 async def download_team_photos(message: types.Message):
     if not team_photos:
@@ -697,6 +754,7 @@ async def download_team_photos(message: types.Message):
         )
     await message.answer("تم تحميل أحدث الصور! استمتع بذكرياتنا معاً. 💖", reply_markup=main_keyboard)
 
+# Admin panel handlers
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
@@ -715,8 +773,10 @@ async def admin_panel(message: types.Message, state: FSMContext):
     ])
     await message.answer("لوحة التحكم للأدمن: نحن فخورون بإدارتك الرائعة! 🌟", reply_markup=admin_keyboard)
 
+# Admin meeting schedule handlers
 @dp.callback_query(F.data == "admin_general")
 async def admin_general(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Admin general callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("رو من هان مانك آدمن ")
         return
@@ -730,6 +790,7 @@ async def admin_general(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "admin_support1")
 async def admin_support1(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Admin support1 callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("كاشفك ، مانك آدمن 😝")
         return
@@ -743,6 +804,7 @@ async def admin_support1(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "admin_support2")
 async def admin_support2(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Admin support2 callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -756,6 +818,7 @@ async def admin_support2(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "admin_central")
 async def admin_central(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Admin central callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -780,9 +843,10 @@ async def admin_set_date(message: types.Message, state: FSMContext):
     await message.answer(f"تم حفظ موعد {meeting_type}: {meeting_date}\nشكراً لك، أنت تجعل فريقنا أقوى! 🌹", reply_markup=main_keyboard)
     await state.clear()
 
-# معالج زر البث في لوحة الأدمن
+# Admin broadcast handlers
 @dp.callback_query(F.data == "admin_broadcast")
 async def admin_broadcast_start(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Admin broadcast callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -802,15 +866,16 @@ async def admin_broadcast_message(message: types.Message, state: FSMContext):
         try:
             await bot.send_message(user_id, broadcast_msg)
             sent_count += 1
-            await asyncio.sleep(0.05)  # تأخير قصير لتجنب rate limit
+            await asyncio.sleep(0.05)  # Delay to avoid rate limit
         except Exception as e:
-            logging.error(f"Failed to send to {user_id}: {e}")
+            logger.error(f"Failed to send to {user_id}: {e}")
     await message.answer(f"تم إرسال الرسالة إلى {sent_count} مستخدم. شكراً لك! 💖", reply_markup=main_keyboard)
     await state.clear()
 
-# Admin send message to user
+# Admin send user message handlers
 @dp.callback_query(F.data == "admin_send_user_msg")
 async def admin_send_user_msg_start(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Admin send user msg callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -848,9 +913,10 @@ async def admin_send_user_message(message: types.Message, state: FSMContext):
         await message.answer(f"حدث خطأ في إرسال الرسالة: {e}")
     await state.clear()
 
-# Admin attendance check
+# Admin attendance handlers
 @dp.callback_query(F.data == "admin_attendance")
 async def admin_attendance_start(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Admin attendance callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -860,11 +926,11 @@ async def admin_attendance_start(callback: types.CallbackQuery, state: FSMContex
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
     await callback.message.edit_text("اختر نوع التفقد:", reply_markup=attendance_keyboard)
-    # Removed unnecessary set_state as next actions are callbacks
     await callback.answer()
 
 @dp.callback_query(F.data == "attendance_meeting")
 async def attendance_meeting(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Attendance meeting callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -878,6 +944,7 @@ async def attendance_meeting(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "attendance_initiative")
 async def attendance_initiative(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Attendance initiative callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -907,9 +974,10 @@ async def admin_attendance_names(message: types.Message, state: FSMContext):
     await message.answer(f"تم إرسال تقرير {attendance_type} بنجاح! 🌟", reply_markup=main_keyboard)
     await state.clear()
 
-# Admin upload photos
+# Admin photo upload handlers
 @dp.callback_query(F.data == "admin_upload_photos")
 async def admin_upload_photos_start(callback: types.CallbackQuery, state: FSMContext):
+    logger.info(f"Admin upload photos callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -931,8 +999,10 @@ async def admin_upload_photo(message: types.Message, state: FSMContext):
         await message.answer("يرجى إرسال صورة فقط. 💕")
     # Stay in state to allow multiple uploads
 
+# Admin photo delete handlers
 @dp.callback_query(F.data == "admin_delete_photos")
 async def admin_delete_photos_start(callback: types.CallbackQuery):
+    logger.info(f"Admin delete photos callback from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -957,6 +1027,7 @@ async def admin_delete_photos_start(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("delete_photo_"))
 async def delete_photo(callback: types.CallbackQuery):
+    logger.info(f"Delete photo callback: {callback.data} from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("غير مصرح لك!")
         return
@@ -971,17 +1042,19 @@ async def delete_photo(callback: types.CallbackQuery):
         else:
             await callback.answer("الصورة غير موجودة.")
     except Exception as e:
-        logging.error(f"Error deleting photo: {e}")
+        logger.error(f"Error deleting photo: {e}")
         await callback.answer("حدث خطأ في الحذف.")
     await callback.answer()
 
-# دالة التشغيل الرئيسية عند بدء البوت
+# Startup function
 async def on_startup(bot: Bot) -> None:
     webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')}/webhook"
     webhook_secret = os.getenv('WEBHOOK_SECRET', 'default_secret')
-    await bot.set_webhook(url=webhook_url, secret_token=webhook_secret)
-    logging.info(f"Webhook set to {webhook_url}")
+    await bot.set_webhook(url=webhook_url, secret_token=webhook_secret, allowed_updates=dp.resolve_used_update_types())
+    info = await bot.get_webhook_info()
+    logger.info(f"Webhook set to {webhook_url}, info: {info}")
 
+# Main function
 def main() -> None:
     dp.startup.register(on_startup)
     webhook_secret = os.getenv('WEBHOOK_SECRET', 'default_secret')
