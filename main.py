@@ -125,7 +125,7 @@ async def back_to_main(message: types.Message, state: FSMContext):
 async def back_to_main_inline(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text("تم العودة إلى القائمة الرئيسية. نحن هنا لمساعدتك دائماً! 💕", reply_markup=None)
-    await callback.message.answer("اختر الخيار الذي تريده:", reply_markup=main_keyboard)
+    await callback.message.reply("اختر الخيار الذي تريده:", reply_markup=main_keyboard)
     await callback.answer()
 
 @dp.message(Command("start"))
@@ -318,7 +318,7 @@ async def feedback_initiative_timeline(message: types.Message, state: FSMContext
 async def feedback_initiative_success(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     data = await state.get_data()
-    data['initiative_success'] = message.text
+    await state.update_data(initiative_success=message.text)
     user_name = message.from_user.first_name or "غير محدد"
     initiative_report = (
         f"اقتراح مبادرة جديد:\n"
@@ -331,7 +331,7 @@ async def feedback_initiative_success(message: types.Message, state: FSMContext)
         f"الموارد المطلوبة: {data['initiative_resources']}\n"
         f"الشركاء والداعمين: {data['initiative_partners']}\n"
         f"الجدول الزمني: {data['initiative_timeline']}\n"
-        f"قياس النجاح: {data['initiative_success']}\n\n"
+        f"قياس النجاح: {message.text}\n\n"
         f"تاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
     for admin_id in ADMIN_IDS:
@@ -387,7 +387,7 @@ async def excuse_activity_type(message: types.Message, state: FSMContext):
 async def excuse_reason(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     data = await state.get_data()
-    data['reason'] = message.text
+    await state.update_data(reason=message.text)
     confirm_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="تأكيد الطلب", callback_data="confirm_excuse")],
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -397,11 +397,10 @@ async def excuse_reason(message: types.Message, state: FSMContext):
         f"تأكيد الطلب:\n"
         f"الاسم: {data['name']}\n"
         f"نوع النشاط: {data['activity_type']}\n"
-        f"السبب: {data['reason']}\n\n"
+        f"السبب: {message.text}\n\n"
         "هل تريد تأكيد الطلب؟",
         reply_markup=confirm_keyboard
     )
-    await state.update_data(reason=data['reason'])
     await state.set_state(ExcuseStates.waiting_confirm)
 
 @dp.callback_query(F.and_(F.data == "confirm_excuse", StateFilter(ExcuseStates.waiting_confirm)))
@@ -494,8 +493,8 @@ async def leave_start_date(message: types.Message, state: FSMContext):
 async def leave_end_date(message: types.Message, state: FSMContext):
     users.add(message.from_user.id)
     data = await state.get_data()
-    data['end_date'] = message.text
-    details = f"مدة: {data['duration']} أيام\nتاريخ البدء: {data['start_date']}\nتاريخ الانتهاء: {data['end_date']}"
+    await state.update_data(end_date=message.text)
+    details = f"مدة: {data['duration']} أيام\nتاريخ البدء: {data['start_date']}\nتاريخ الانتهاء: {message.text}"
     confirm_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="تأكيد الطلب", callback_data="confirm_leave")],
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
@@ -509,7 +508,6 @@ async def leave_end_date(message: types.Message, state: FSMContext):
         "هل تريد تأكيد الطلب؟",
         reply_markup=confirm_keyboard
     )
-    await state.update_data(end_date=data['end_date'])
     await state.set_state(LeaveStates.waiting_confirm)
 
 @dp.callback_query(F.and_(F.data == "confirm_leave", StateFilter(LeaveStates.waiting_confirm)))
@@ -620,12 +618,12 @@ async def rules(callback: types.CallbackQuery):
 @dp.message(lambda message: message.text == "أهدني عبارة")
 async def phrase_handler(message: types.Message):
     phrase = random.choice(motivational_phrases)
-    await message.answer(f": {phrase} 💖", reply_markup=main_keyboard)
+    await message.answer(f"{phrase} 💖", reply_markup=main_keyboard)
 
 @dp.message(lambda message: message.text == "لا تنس ذكر الله")
 async def dhikr_handler(message: types.Message):
     dhikr = "\n".join(dhikr_phrases)
-    await message.answer(f" : {dhikr} 🌟", reply_markup=main_keyboard)
+    await message.answer(f"{dhikr} 🌟", reply_markup=main_keyboard)
 
 @dp.message(lambda message: message.text == "استعلامات")
 async def inquiries_handler(message: types.Message):
@@ -862,7 +860,7 @@ async def admin_attendance_start(callback: types.CallbackQuery, state: FSMContex
         [InlineKeyboardButton(text="رجوع", callback_data="back_to_main")]
     ])
     await callback.message.edit_text("اختر نوع التفقد:", reply_markup=attendance_keyboard)
-    await state.set_state(AdminStates.waiting_attendance_type)
+    # Removed unnecessary set_state as next actions are callbacks
     await callback.answer()
 
 @dp.callback_query(F.data == "attendance_meeting")
