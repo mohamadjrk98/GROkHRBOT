@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
 TOKEN = os.getenv('BOT_TOKEN')
 # Use a default ID if the environment variable is not set to prevent runtime errors
 try:
+    # This list will hold all admin IDs
     ADMIN_IDS = [int(os.getenv('CHAT_ADMIN_ID')), 5780307552]
+    # Filter out None/0/invalid entries if CHAT_ADMIN_ID was missing but others exist
+    ADMIN_IDS = [aid for aid in ADMIN_IDS if aid]
 except (TypeError, ValueError):
     ADMIN_IDS = [5780307552] # Fallback if primary admin ID is missing or invalid
     logger.warning("CHAT_ADMIN_ID not set or invalid. Using fallback admin ID only.")
@@ -106,7 +109,7 @@ feedback_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="اقتراح تطوير البوت")],
         [KeyboardButton(text="اقتراح مبادرة")],
-        [KeyboardButton(text="تقييم سري")], # تم التعديل هنا
+        [KeyboardButton(text="آخر")], # هذا الزر سيُستخدم للتقييم السري
         [KeyboardButton(text="رجوع")]
     ],
     resize_keyboard=True,
@@ -300,14 +303,14 @@ async def feedback_bot_message(message: types.Message, state: FSMContext):
     await message.answer("شكراً جزيلاً لاقتراحك! سنراجعه بعناية لتحسين تجربتك معنا. 🌟", reply_markup=main_keyboard)
     await state.clear()
 
-# --- التعديل هنا: استخدام "تقييم سري" ---
-@dp.message(F.text == "تقييم سري", StateFilter(FeedbackStates.waiting_type))
+# --- التعديل هنا: استخدام "آخر" كتقييم سري ---
+@dp.message(F.text == "آخر", StateFilter(FeedbackStates.waiting_type))
 async def feedback_secret_start(message: types.Message, state: FSMContext):
     logger.info(f"Secret feedback initiated by {message.from_user.id}")
     users.add(message.from_user.id)
     
     await message.answer(
-        "📝 **التقييم السري**\n\n"
+        "📝 **التقييم السري (آخر)**\n\n"
         "أهلاً بك! نحن نقدّر صراحتك. يرجى كتابة تقييمك/اقتراحك كاملاً. **لن يتم إرسال هويتك** (لا اسم ولا معرّف) إلى الإدارة. كن صريحاً! 💕", 
         reply_markup=back_keyboard,
         parse_mode=ParseMode.MARKDOWN
@@ -323,7 +326,7 @@ async def feedback_secret_message(message: types.Message, state: FSMContext):
     
     # إرسال الرسالة إلى الأدمنز بدون أي بيانات تعريفية
     await send_to_admins(
-        f"**📣 تقييم سري جديد 📣**\n"
+        f"**📣 تقييم سري جديد (آخر) 📣**\n"
         f"**المرسل:** (مجهول الهوية - حفاظاً على الخصوصية)\n"
         f"**الرسالة:**\n{suggestion_text}\n\n"
         f"**تاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -594,3 +597,477 @@ async def reject_request(callback: types.CallbackQuery):
     logger.info(f"Reject callback: {callback.data} from {callback.from_user.id}")
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("مين قلك أنك آدمن ؟!")
+        return
+    parts = callback.data.split("_")
+    request_type = parts[1]
+    request_id = parts[2]
+    user_id = int(parts[3])
+    await bot.send_message(user_id, f"نأسف لإخبارك بذلك، 😔 تم رفض طلبك #{request_id}. يرجى التواصل مع الإدارة للمزيد من التفاصيل. نحن هنا لدعمك!")
+    await callback.message.edit_text(callback.message.text + "\n\n**تم الرفض.**")
+    await callback.answer()
+
+# Track requests handler
+@dp.message(F.text == "تتبع طلباتي")
+async def track_start(message: types.Message, state: FSMContext):
+    await message.answer(" ميزة التتبع لسا ما جهزت . حكي محمد الجرك مطور البوت و المسؤول اللطيف. 💕", reply_markup=back_keyboard)
+
+# References handlers
+@dp.message(F.text == "مراجع الفريق")
+async def references_handler(message: types.Message):
+    await message.answer("نحن فخورون بقيمنا في فريق أبناء الأرض! 🌟\nاختر المرجع:", reply_markup=refs_keyboard)
+
+@dp.message(F.text == "مدونة السلوك")
+async def code_of_conduct(message: types.Message):
+    logger.info(f"Code of conduct from {message.from_user.id}")
+    # --- النص الجديد لمدونة السلوك ---
+    text = (
+        "**مدوّنة السلوك للعمل التطوعي**\n\n"
+        "تصدر هذه 'مدونة السلوك' كوثيقة ملزمة للإدارة والمنسقين والمتطوعين من أجل الحفاظ على بيئة عمل منظمة، محترمة، قائمة على الانضباط وروح الفريق.\n\n"
+        "**الالتزام بما يلي هو شرط أساسي للاستمرار ضمن الفريق.**\n\n"
+        "--- **مبادئ السلوك والالتزام** ---\n\n"
+        "**1. الجدية والانضباط**\n"
+        "المطلوب من كل عضو الالتزام بالجدية الكاملة في أداء المهام. أي استهتار أو تعامل غير مسؤول مع الأنشطة مرفوض رفضاً قاطعاً.\n\n"
+        "**2. الفصل بين الشخصي والعمل**\n"
+        "يُمنع إدخال الاهتمامات أو العلاقات الشخصية في العمل التطوعي، مساحة مهنية. أي محاولة لخلط الشخصي مع العمل تُعتبر إخلالاً مباشراً بالمسؤولية.\n\n"
+        "**3. سرية المعلومات**\n"
+        "جميع تفاصيل العمل والقرارات والخطط تُعتبر معلومات داخلية. يُمنع تداولها أو مناقشتها خارج الاجتماعات الرسمية أو القنوات المخصصة.\n\n"
+        "**4. مسؤولية المنسقين**\n"
+        "المنسقون مسؤولون عن متابعة التزام الجميع بهذه المدونة. التهاون أو التغاضي عن أي مخالفة يُعرض المنسق نفسه للمساءلة.\n\n"
+        "**5. منع الشللية والتكتلات**\n"
+        "يُمنع تكوين مجموعات فرعية أو شلل أو تكتلات لمصالح شخصية أو لأغراض ترفيهية. الفريق وحدة واحدة وأي سلوك يُهدد هذه الوحدة مرفوض.\n\n"
+        "**6. روح الفريق**\n"
+        "الاحترام المتبادل والتعاون أساس عملنا. نشر الطاقة السلبية، إثارة النزاعات أو إحباط الفريق غير مقبول. على الجميع دعم بعضهم البعض للحفاظ على بيئة عمل إيجابية ومنظمة.\n\n"
+        "**7. الحياد عن السياسة والدين**\n"
+        "النقاش أو الجدالات السياسية والدينية ممنوعة داخل أنشطة الفريق. الهدف الحفاظ على وحدة العمل بعيداً عن الانقسامات.\n\n"
+        "**8. المظهر والسلوك**\n"
+        "على كل عضو الالتزام بسلوك محترم ولائق. يُمنع استخدام ألفاظ غير مناسبة أو التصرفات التي تُقلل من صورة الفريق.\n\n"
+        "**9. الالتزام بالمواعيد**\n"
+        "احترام الوقت جزء أساسي من الانضباط. أي تأخير أو غياب دون عذر مقبول يُسجل كمخالفة.\n\n"
+        "**10. الالتزام بالمسؤوليات**\n"
+        "المهام الموكلة لكل عضو واجبة التنفيذ وفق المواعيد والجودة المطلوبة. التهرب أو إهمال الواجبات يُعرض صاحبه للمساءلة.\n\n"
+        "**11. المبادرة والجدية في العمل**\n"
+        "يُشجع كل عضو على المبادرة الإيجابية والاقتراح البناء ضمن القنوات الرسمية. الاستخفاف بالعمل أو الاكتفاء بدور شكلي غير مقبول.\n\n"
+        "**12. الاستمرارية مشروطة**\n"
+        "الالتزام بهذه المدونة شرط للبقاء ضمن الفريق. أي عضو يُكرر التجاوزات أو يرفض الالتزام يُعتبر خارج إطار الفريق.\n\n"
+        "--- **آلية المساءلة** ---\n\n"
+        "العقوبات تتدرج حسب طبيعة المخالفة:\n"
+        "- تنبيه شفهي.\n"
+        "- إنذار خطي.\n"
+        "- حرمان مؤقت من الأنشطة.\n"
+        "- إيقاف أو فصل نهائي في حال المخالفات الجسيمة أو التكرار.\n\n"
+        "**الختام**\n\n"
+        "هذه المدونة تُمثل تعهداً رسمياً. كل عضو يوافق على الالتزام بها بشكل كامل ويُدرك أن أي تجاوز سيُقابل بإجراءات واضحة وفورية."
+    )
+    # --- نهاية النص الجديد لمدونة السلوك ---
+    await message.answer(text, reply_markup=back_keyboard, parse_mode=ParseMode.MARKDOWN)
+
+@dp.message(F.text == "بنود وقوانين الفريق")
+async def rules(message: types.Message):
+    logger.info(f"Rules from {message.from_user.id}")
+    text = (
+        "**بنود وقوانين فريق أبناء الأرض:**\n\n"
+        "1. الالتزام بالأهداف الخيرية.\n"
+        "2. عدم مشاركة المعلومات الخاصة.\n"
+        "3. المشاركة الفعالة في الأنشطة.\n"
+        "4. الإبلاغ عن أي مشكلات فوراً.\n"
+        "5. عقوبات: تحذير، إيقاف، إنهاء العضوية حسب الخطأ.\n\n"
+        "للنسخة الكاملة، اطلب من الإدارة. نحن نبني عائلة قوية معاً! 🌹"
+    )
+    await message.answer(text, reply_markup=back_keyboard)
+
+# Motivational and Dhikr handlers
+@dp.message(F.text == "أهدني عبارة")
+async def phrase_handler(message: types.Message):
+    phrase = random.choice(motivational_phrases)
+    await message.answer(f"{phrase} 💖", reply_markup=main_keyboard)
+
+@dp.message(F.text == "لا تنس ذكر الله")
+async def dhikr_handler(message: types.Message):
+    dhikr = "\n".join(dhikr_phrases)
+    await message.answer(f"{dhikr} 🌟", reply_markup=main_keyboard)
+
+# Inquiries handlers
+@dp.message(F.text == "استعلامات")
+async def inquiries_handler(message: types.Message):
+    await message.answer("نحن هنا لنجيب على استفساراتك بكل حب! 💕\nاختر نوع الاستعلام:", reply_markup=inquiries_keyboard)
+
+@dp.message(F.text == "استعلام عن اجتماع")
+async def inquire_meeting(message: types.Message):
+    logger.info(f"Inquire meeting from {message.from_user.id}")
+    await message.answer("اختر الاجتماع الذي تهتم به: 😊", reply_markup=meeting_keyboard)
+
+@dp.message(F.text == "الاجتماع العام")
+async def meeting_general(message: types.Message):
+    logger.info(f"Meeting general from {message.from_user.id}")
+    date = meeting_schedules.get('الاجتماع العام', 'لسا ما تحدد')
+    await message.answer(f"موعد الاجتماع العام: {date}\n\nنحن نتطلع للقائك هناك! 🌹", reply_markup=back_keyboard)
+
+@dp.message(F.text == "اجتماع فريق الدعم الاول")
+async def meeting_support1(message: types.Message):
+    logger.info(f"Meeting support1 from {message.from_user.id}")
+    date = meeting_schedules.get('اجتماع فريق الدعم الاول', 'لسا ما تحدد')
+    await message.answer(f"موعد اجتماع فريق الدعم الاول: {date}\n\nمعاً نبني الدعم الأقوى! 💪", reply_markup=back_keyboard)
+
+@dp.message(F.text == "اجتماع فريق الدعم الثاني")
+async def meeting_support2(message: types.Message):
+    logger.info(f"Meeting support2 from {message.from_user.id}")
+    date = meeting_schedules.get('فريق الدعم الثاني', 'لسا ما تحدد')
+    await message.answer(f"موعد فريق الدعم الثاني: {date}\n\nدعمكم يلهمنا دائماً! 😊", reply_markup=back_keyboard)
+
+@dp.message(F.text == "اجتماع الفريق المركزي")
+async def meeting_central(message: types.Message):
+    logger.info(f"Meeting central from {message.from_user.id}")
+    date = meeting_schedules.get('الفريق المركزي', 'لسا ما تحدد')
+    await message.answer(f"موعد الفريق المركزي: {date}\n\nمركزنا هو قلب الفريق! ❤️", reply_markup=back_keyboard)
+
+# Team photos handler
+@dp.message(F.text == "تحميل صور الفريق الاخيرة")
+async def download_team_photos(message: types.Message):
+    if not team_photos:
+        await message.answer("لا توجد صور متاحة حالياً. شكراً لاهتمامك! 💕", reply_markup=main_keyboard)
+        return
+    # Send the last 5 photos or all if less
+    num_photos = min(5, len(team_photos))
+    await message.answer(f"بدء تحميل آخر {num_photos} صور للفريق. قد يستغرق الأمر بعض الوقت...", reply_markup=main_keyboard)
+    for i in range(num_photos):
+        photo_info = team_photos[-1 - i]  # Reverse to get latest first
+        try:
+            await bot.send_photo(
+                message.chat.id,
+                photo_info['file_id'],
+                caption=f"صورة الفريق الأخيرة ({i+1}/{num_photos}) 🌟"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send photo {i+1}: {e}")
+            await message.answer(f"حدث خطأ أثناء إرسال الصورة رقم {i+1}.")
+    await message.answer("تم تحميل أحدث الصور! استمتع بذكرياتنا معاً. 💖", reply_markup=main_keyboard)
+
+# Admin panel handlers
+@dp.message(Command("admin"))
+async def admin_panel(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("مين قلك أنك آدمن ؟!")
+        return
+    await message.answer("لوحة التحكم للأدمن: نحن فخورون بإدارتك الرائعة! 🌟", reply_markup=admin_keyboard)
+
+# Admin meeting schedule handlers
+@dp.message(F.text == "وضع موعد الاجتماع العام")
+async def admin_general(message: types.Message, state: FSMContext):
+    logger.info(f"Admin general from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("رو من هان مانك آدمن ")
+        return
+    await state.update_data(meeting_type='الاجتماع العام')
+    await message.answer("أدخل موعد الاجتماع العام (YYYY-MM-DD HH:MM): شكراً لجهودك في تنظيمنا! 😊", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_meeting_date)
+
+@dp.message(F.text == "وضع موعد دعم أول")
+async def admin_support1(message: types.Message, state: FSMContext):
+    logger.info(f"Admin support1 from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("كاشفك ، مانك آدمن 😝")
+        return
+    await state.update_data(meeting_type='اجتماع فريق الدعم الاول')
+    await message.answer("أدخل موعد اجتماع فريق الدعم الاول (YYYY-MM-DD HH:MM):", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_meeting_date)
+
+@dp.message(F.text == "وضع موعد دعم ثاني")
+async def admin_support2(message: types.Message, state: FSMContext):
+    logger.info(f"Admin support2 from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+    await state.update_data(meeting_type='فريق الدعم الثاني')
+    await message.answer("أدخل موعد فريق الدعم الثاني (YYYY-MM-DD HH:MM):", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_meeting_date)
+
+@dp.message(F.text == "وضع موعد مركزي")
+async def admin_central(message: types.Message, state: FSMContext):
+    logger.info(f"Admin central from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+    await state.update_data(meeting_type='الفريق المركزي')
+    await message.answer("أدخل موعد الفريق المركزي (YYYY-MM-DD HH:MM):", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_meeting_date)
+
+@dp.message(AdminStates.waiting_meeting_date)
+async def admin_set_date(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        await state.clear()
+        return
+    data = await state.get_data()
+    meeting_type = data['meeting_type']
+    meeting_date = message.text
+    meeting_schedules[meeting_type] = meeting_date
+    await message.answer(f"تم حفظ موعد {meeting_type}: {meeting_date}\nشكراً لك، أنت تجعل فريقنا أقوى! 🌹", reply_markup=admin_keyboard)
+    await state.clear()
+
+# Admin broadcast handlers
+@dp.message(F.text == "إرسال بث للجميع")
+async def admin_broadcast_start(message: types.Message, state: FSMContext):
+    logger.info(f"Admin broadcast from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+    await message.answer("أدخل الرسالة التي تريد إرسالها لجميع المستخدمين:", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_broadcast_message)
+
+@dp.message(AdminStates.waiting_broadcast_message)
+async def admin_broadcast_message(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("قعود عاقل و حاج تبعت")
+        await state.clear()
+        return
+    broadcast_msg = message.text
+    sent_count = 0
+    # Create a copy of the users set to iterate over safely
+    users_to_send = list(users)
+    await message.answer(f"جارٍ إرسال الرسالة إلى {len(users_to_send)} مستخدم... ⏳")
+    for user_id in users_to_send:
+        try:
+            await bot.send_message(user_id, broadcast_msg)
+            sent_count += 1
+            await asyncio.sleep(0.05)  # Delay to avoid rate limit
+        except Exception as e:
+            logger.error(f"Failed to send to {user_id}: {e}")
+    await message.answer(f"تم إرسال الرسالة إلى {sent_count} مستخدم. شكراً لك! 💖", reply_markup=admin_keyboard)
+    await state.clear()
+
+# Admin send user message handlers
+@dp.message(F.text == "إرسال رسالة لمستخدم")
+async def admin_send_user_msg_start(message: types.Message, state: FSMContext):
+    logger.info(f"Admin send user msg from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+    await message.answer("أدخل ID التلغرام للمستخدم (رقم فقط):", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_user_id)
+
+@dp.message(AdminStates.waiting_user_id)
+async def admin_waiting_user_id(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        await state.clear()
+        return
+    try:
+        user_id = int(message.text)
+        await state.update_data(user_id=user_id)
+        await message.answer("الآن أدخل الرسالة التي تريد إرسالها:", reply_markup=back_keyboard)
+        await state.set_state(AdminStates.waiting_user_message)
+    except ValueError:
+        await message.answer("يرجى إدخال رقم صحيح لـ ID المستخدم.")
+
+@dp.message(AdminStates.waiting_user_message)
+async def admin_send_user_message(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        await state.clear()
+        return
+    data = await state.get_data()
+    user_id = data['user_id']
+    user_msg = message.text
+    try:
+        await bot.send_message(user_id, user_msg)
+        await message.answer("تم إرسال الرسالة بنجاح! 💖", reply_markup=admin_keyboard)
+    except Exception as e:
+        await message.answer(f"حدث خطأ في إرسال الرسالة: {e}")
+        logger.error(f"Failed to send direct message to {user_id}: {e}")
+    await state.clear()
+
+# Admin attendance handlers
+@dp.message(F.text == "تفقد")
+async def admin_attendance_start(message: types.Message, state: FSMContext):
+    logger.info(f"Admin attendance from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+    await message.answer("اختر نوع التفقد:", reply_markup=attendance_keyboard)
+
+@dp.message(F.text == "تفقد اجتماع")
+async def attendance_meeting(message: types.Message, state: FSMContext):
+    logger.info(f"Attendance meeting from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+    await state.update_data(attendance_type="تفقد اجتماع")
+    await message.answer("أدخل أسماء المتطوعين الحاضرين مفصولة بفاصلة (مثال: أحمد محمد, فاطمة علي):", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_attendance_names)
+
+@dp.message(F.text == "تفقد مبادرة")
+async def attendance_initiative(message: types.Message, state: FSMContext):
+    logger.info(f"Attendance initiative from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+    await state.update_data(attendance_type="تفقد مبادرة")
+    await message.answer("أدخل أسماء المتطوعين الحاضرين مفصولة بفاصلة (مثال: أحمد محمد, فاطمة علي):", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_attendance_names)
+
+@dp.message(AdminStates.waiting_attendance_names)
+async def admin_attendance_names(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        await state.clear()
+        return
+    data = await state.get_data()
+    attendance_type = data['attendance_type']
+    names = message.text
+    names_list = [name.strip() for name in names.split(',')]
+    report = f"**تقرير {attendance_type}** - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:\n\n**الحاضرون:**\n" + "\n".join(f"- {name}" for name in names_list)
+    try:
+        await bot.send_message(
+            ATTENDANCE_GROUP_ID,
+            report
+        )
+        await message.answer(f"تم إرسال تقرير {attendance_type} بنجاح! 🌟", reply_markup=admin_keyboard)
+    except Exception as e:
+        logger.error(f"Failed to send attendance report to group: {e}")
+        await message.answer("حدث خطأ في إرسال التقرير إلى مجموعة الحضور.", reply_markup=admin_keyboard)
+    await state.clear()
+
+# Admin photo upload handlers
+@dp.message(F.text == "رفع صور الفريق")
+async def admin_upload_photos_start(message: types.Message, state: FSMContext):
+    logger.info(f"Admin upload photos from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+    await message.answer("أرسل الصور الجديدة للفريق (يمكنك إرسال عدة صور): 💕", reply_markup=back_keyboard)
+    await state.set_state(AdminStates.waiting_upload_photo)
+
+@dp.message(AdminStates.waiting_upload_photo, F.photo)
+async def admin_upload_photo(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+
+    file_id = message.photo[-1].file_id
+    team_photos.append({'file_id': file_id})
+    await message.answer("تم رفع الصورة بنجاح! أرسل المزيد إذا أردت، أو اضغط /admin للعودة إلى لوحة الأدمن. 🌟")
+
+
+@dp.message(AdminStates.waiting_upload_photo, ~F.text.in_(["رجوع", "/admin"]))
+async def admin_upload_photo_invalid(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    await message.answer("يرجى إرسال صورة فقط. لإيقاف الرفع والعودة، اضغط على 'رجوع' أو اكتب /admin. 💕")
+
+
+# Admin photo delete handlers
+@dp.message(F.text == "حذف صور الفريق")
+async def admin_delete_photos_start(message: types.Message):
+    logger.info(f"Admin delete photos from {message.from_user.id}")
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("غير مصرح لك!")
+        return
+    if not team_photos:
+        await message.answer("لا توجد صور للحذف حالياً. 💕", reply_markup=admin_keyboard)
+        return
+
+    # Send up to 5 photos with delete buttons (to avoid flooding)
+    num_photos_to_show = min(5, len(team_photos))
+    await message.answer(f"يتم عرض آخر {num_photos_to_show} صور. اختر الصورة التي تريد حذفها:")
+    
+    for i in range(1, num_photos_to_show + 1):
+        idx = len(team_photos) - i
+        photo_info = team_photos[idx]
+        
+        delete_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="حذف هذه الصورة", callback_data=f"delete_photo_{idx}")]
+        ])
+        
+        try:
+            await bot.send_photo(
+                message.chat.id,
+                photo_info['file_id'],
+                caption=f"صورة الفريق #{idx + 1} (للحذف)",
+                reply_markup=delete_keyboard
+            )
+        except Exception as e:
+            logger.error(f"Error showing photo for deletion: {e}")
+            await message.answer(f"حدث خطأ في عرض الصورة رقم {idx + 1}.")
+            
+    await message.answer("بعد الحذف، اضغط /admin للعودة إلى لوحة الأدمن.", reply_markup=admin_keyboard)
+
+
+@dp.callback_query(F.data.startswith("delete_photo_"))
+async def delete_photo(callback: types.CallbackQuery):
+    logger.info(f"Delete photo callback: {callback.data} from {callback.from_user.id}")
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("غير مصرح لك!")
+        return
+    try:
+        idx_str = callback.data.split("_")[2]
+        idx = int(idx_str)
+        
+        if 0 <= idx < len(team_photos) and team_photos[idx].get('file_id'):
+            del team_photos[idx]
+            
+            await callback.message.edit_caption(
+                caption=callback.message.caption + "\n\n**تم الحذف بنجاح! 💖**",
+                reply_markup=None # Remove the delete button
+            )
+        else:
+            await callback.answer("الصورة غير موجودة أو تم حذفها مسبقاً.")
+    except Exception as e:
+        logger.error(f"Error deleting photo: {e}")
+        await callback.answer("حدث خطأ في الحذف.")
+    
+    await callback.answer("تم حذف الصورة.")
+
+# Startup function
+async def on_startup(bot: Bot) -> None:
+    # Use environment variables for webhook setup
+    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')}/webhook"
+    webhook_secret = os.getenv('WEBHOOK_SECRET', 'default_secret')
+    
+    if not TOKEN:
+        logger.error("BOT_TOKEN is not set. Bot will not set webhook.")
+        return
+
+    try:
+        await bot.set_webhook(url=webhook_url, secret_token=webhook_secret, allowed_updates=dp.resolve_used_update_types())
+        info = await bot.get_webhook_info()
+        logger.info(f"Webhook set successfully to: {webhook_url}")
+        logger.info(f"Webhook Info: {info}")
+    except Exception as e:
+        logger.error(f"Failed to set webhook: {e}")
+        
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_message(admin_id, "**البوت أعيد تشغيله بنجاح!** 🤖")
+        except Exception as e:
+            logger.error(f"Failed to send startup message to admin {admin_id}: {e}")
+
+# Main function
+def main() -> None:
+    if not TOKEN:
+        logger.error("BOT_TOKEN environment variable not set. Exiting.")
+        return
+    
+    dp.startup.register(on_startup)
+    webhook_secret = os.getenv('WEBHOOK_SECRET', 'default_secret')
+    webhook_path = "/webhook"
+    
+    app = web.Application()
+    webhook_requests_handler = SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+        secret_token=webhook_secret,
+    )
+    webhook_requests_handler.register(app, path=webhook_path)
+    setup_application(app, dp, bot=bot)
+    
+    port = int(os.getenv('PORT', 8080)) # Default to 8080 if PORT is not set
+    host = '0.0.0.0'
+    
+    logger.info(f"Starting web application on {host}:{port}")
+    web.run_app(app, host=host, port=port)
+
+if __name__ == "__main__":
+    if not TOKEN:
+        logger.error("BOT_TOKEN is not set. Please set the environment variable.")
+    else:
+        main()
